@@ -1,2 +1,2 @@
 # modelts
-Fast model implementation for Typescript, JSON, REST and GraphQL
+Fast and easy to use Model framework for Typescript, GraphQL, REST and JSON

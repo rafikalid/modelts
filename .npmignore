@@ -1,0 +1,7 @@
+/src
+/gulp
+/gulp-dist
+/gulpfile.js
+/node_modules
+/test
+/tsconfig.json
