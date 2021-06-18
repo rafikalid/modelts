@@ -17,9 +17,10 @@ export type ModelNode= ModelObjectNode | ModelListNode | ModelRefNode | ModelUni
 
 /** Model node AST */
 export interface ModelBaseNode{
-	name?:		string
+	name:		string | undefined
 	kind:		ModelKind
-	required:	boolean
+	/** Comment */
+	jsDoc:		string | undefined
 }
 
 /** Object node */
@@ -55,4 +56,13 @@ export interface ObjectField{
 	name:	string
 	/** Field value */
 	value:	ModelNode
+	/** Is required */
+	required:	boolean
+}
+
+
+/** Model base class */
+export interface RootModel{
+	models: ModelNode[]
+	map:	Record<string, ModelNode>
 }
