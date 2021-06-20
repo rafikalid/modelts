@@ -55,9 +55,11 @@ export interface ObjectField{
 	/** Field name */
 	name:	string
 	/** Field value */
-	value:	ModelNode
+	value:	ModelNode|undefined
 	/** Is required */
-	required:	boolean
+	required:	boolean,
+	/** Comment */
+	jsDoc:		string | undefined
 }
 
 

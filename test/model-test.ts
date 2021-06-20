@@ -23,10 +23,10 @@ export interface UserModel {
 }
 
 /** @tsmodel */
-type Email= `/$Email regex^/`;
+export type Email= `/$Email regex^/`;
 
 /** @tsmodel */
-type ID= string;
+export type ID= string;
 
 /** @tsmodel */
 export class UserResolvers implements ResolversOf<UserModel>{

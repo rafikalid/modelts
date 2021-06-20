@@ -1,6 +1,5 @@
-import { objectCreate } from "@src/helpers/utils";
-import { ModelKind, ModelObjectNode, RootModel } from "@src/schema/model";
-import ts, { ClassLikeDeclaration } from "typescript";
+import { ModelKind, ModelObjectNode, ObjectField, RootModel } from "@src/schema/model.js";
+import ts from "typescript";
 
 
 type TsClazzType= ts.ClassLikeDeclaration | ts.InterfaceDeclaration;
@@ -27,47 +26,88 @@ function _visitor(ctx:ts.TransformationContext, sf:ts.SourceFile): ts.Visitor{
 		// Check for jsDoc
 		// Classes & interfaces
 		switch(node.kind){
-			case ts.SyntaxKind.ClassDeclaration:
 			case ts.SyntaxKind.InterfaceDeclaration:
+			case ts.SyntaxKind.ClassDeclaration:
 				if(_isTsModel(node))
-					return _visiteClassInterface(node as TsClazzType);
+					_compileClazzInterface(node as TsClazzType);
 				break;
 			case ts.SyntaxKind.EnumDeclaration:
-				if(_isTsModel(node)) break;
-				//TODO compile enum
-				console.log('----- compile enum')
+				console.log('----------------------------------------->> ENUM: ')
+				if(_isTsModel(node)){
+					console.log(node.getFullText());
+				}
 				break;
 			case ts.SyntaxKind.TypeAliasDeclaration:
-				if(_isTsModel(node)) break;
-				//TODO check and compile "type"
-				console.log('----- compile type')
+				console.log('----------------------------------------->> TYPE: ')
+				if(_isTsModel(node)){
+					console.log(node.getFullText());
+				}
 				break
 		}
 		return ts.visitEachChild(node, visitorCb, ctx);
 	}
-	/** Compile classes and interfaces */
-	function _visiteClassInterface(node: TsClazzType): ts.VisitResult<ts.Node>{
-		// class model
+	/** Compile interface */
+	function _compileClazzInterface(node: TsClazzType){
+		if(node.name == null)
+			throw new Error(`Expected interface name at: ${node.getStart()}`);
+		console.log('compile interface>>', node.name.getText());
+		var clazzFields:ObjectField[]= [], classFieldsMap:Record<string, ObjectField>= {};
 		var clazz: ModelObjectNode= {
-			name:		node.name?.getText(),
+			name:		node.name.getText(),
 			kind:		ModelKind.PLAIN_OBJECT,
 			jsDoc:		undefined,
-			fields:		[],
-			fieldMap:	{}
+			fields:		clazzFields,
+			fieldMap:	classFieldsMap
 		};
-		// Eeach child
-		var childs= node.getChildren();
-		for (var i = 0, len= childs.length; i < len; i++) {
-			var childNode = childs[i];
-			switch(childNode.kind){
-				case ts.SyntaxKind.JSDocComment:
-					clazz.jsDoc= childNode.getFullText();
+		var i, len, members= node.members;
+		for (i = 0, len= members.length; i < len; i++) {
+			var field = node.members[i];
+			if(field.name==null) continue;
+			var fieldName= field.name.getText();
+			var fieldDesc: ObjectField= {
+				name:		fieldName,
+				required:	true,
+				value:      undefined,
+				jsDoc:		undefined
+			}
+			clazzFields.push(fieldDesc);
+			classFieldsMap[fieldName]= fieldDesc;
+			var fieldChilds= field.getChildren();
+			var j, jLen;
+			console.log('>> Field:', fieldDesc.name)
+			for (j = 0, jLen= fieldChilds.length; j < jLen; j++) {
+				var fieldChild= fieldChilds[j];
+				switch(fieldChild.kind){
+					case ts.SyntaxKind.QuestionToken:
+						fieldDesc.required= false;
+						break;
+					case ts.SyntaxKind.JSDocComment:
+						fieldDesc.jsDoc= fieldChild.getChildren().map(e=> e.getText()).join("\n");
+						break;
+					case ts.SyntaxKind.TypeReference:
+						//TODO
+						break
+					case ts.SyntaxKind.StringKeyword:
+						// string
+						break
+					case ts.SyntaxKind.BooleanKeyword:
+						// string
+						break
+					case ts.SyntaxKind.NumberKeyword:
+						// string
+						break
+					case ts.SyntaxKind.SymbolKeyword:
+						// string
+						break
+					case ts.SyntaxKind.BigIntKeyword:
+						// string
+						break
+					default:
+						throw new Error(`Enexpected field type at ${clazz.name}.${fieldDesc.name} :: ${fieldChild.getStart()}`);
+				}
 			}
 		}
-
-
-
-		return node;
+		console.log('------------------END-----------------')
 	}
 	/** Return */
 	return visitorCb;
@@ -82,7 +122,7 @@ function _isTsModel(node: ts.Node):boolean{
 		if(ts.isJSDoc(childNode)){
 			var childNodes= childNode.getChildren();
 			for (let j = 0, jLen= childNodes.length; j < jLen; j++) {
-				if(childNodes[j].getFullText().trim()=== '@tsmodel') { return true }
+				if(childNodes[j].getFullText().includes('@tsmodel')) { return true }
 			}
 		}
 	}
