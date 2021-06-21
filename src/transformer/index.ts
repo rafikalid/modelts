@@ -1,5 +1,5 @@
-import { ModelKind, ModelObjectNode, ObjectField, RootModel } from "@src/schema/model.js";
-import ts from "typescript";
+import { ModelKind, ModelObjectNode, ObjectField, RootModel, ModelNode } from "@src/schema/model.js";
+import ts, { PropertySignature } from "typescript";
 
 
 type TsClazzType= ts.ClassLikeDeclaration | ts.InterfaceDeclaration;
@@ -17,19 +17,31 @@ export function createBeforeTransformer(){
 /** Visitor */
 function _visitor(ctx:ts.TransformationContext, sf:ts.SourceFile): ts.Visitor{
 	/** Root class */
-	var root: RootModel= {
+	const root: RootModel= {
 		models:	[],
 		map:	{}
 	}
 	/** Visitor callback */
-	function visitorCb(node: ts.Node): ts.VisitResult<ts.Node>{
-		// Check for jsDoc
+	function visitorCb(parentNode: ModelNode|undefined ,node: ts.Node): ts.VisitResult<ts.Node>{
 		// Classes & interfaces
+		var currentNode: ModelNode|undefined;
 		switch(node.kind){
 			case ts.SyntaxKind.InterfaceDeclaration:
 			case ts.SyntaxKind.ClassDeclaration:
-				if(_isTsModel(node))
-					_compileClazzInterface(node as TsClazzType);
+				// Classes and interfaces could not have parent node (at least for now)
+				if(parentNode)
+					throw new Error(`Enexpected ${parentNode.name}::${ts.SyntaxKind[node.kind]} at line: ${node.getStart()}`);
+				if(_isTsModel(node)){
+					if(!(node as TsClazzType).name)
+						throw new Error(`Expected interface name at: ${node.getStart()}`);
+					currentNode= {
+						name:		(node as TsClazzType).name!.getText(),
+						kind:		ModelKind.PLAIN_OBJECT,
+						jsDoc:		undefined,
+						fields:		[],
+						fieldMap:	{}
+					}
+				}
 				break;
 			case ts.SyntaxKind.EnumDeclaration:
 				console.log('----------------------------------------->> ENUM: ')
@@ -43,74 +55,75 @@ function _visitor(ctx:ts.TransformationContext, sf:ts.SourceFile): ts.Visitor{
 					console.log(node.getFullText());
 				}
 				break
-		}
-		return ts.visitEachChild(node, visitorCb, ctx);
-	}
-	/** Compile interface */
-	function _compileClazzInterface(node: TsClazzType){
-		if(node.name == null)
-			throw new Error(`Expected interface name at: ${node.getStart()}`);
-		console.log('compile interface>>', node.name.getText());
-		var clazzFields:ObjectField[]= [], classFieldsMap:Record<string, ObjectField>= {};
-		var clazz: ModelObjectNode= {
-			name:		node.name.getText(),
-			kind:		ModelKind.PLAIN_OBJECT,
-			jsDoc:		undefined,
-			fields:		clazzFields,
-			fieldMap:	classFieldsMap
-		};
-		var i, len, members= node.members;
-		for (i = 0, len= members.length; i < len; i++) {
-			var field = node.members[i];
-			if(field.name==null) continue;
-			var fieldName= field.name.getText();
-			var fieldDesc: ObjectField= {
-				name:		fieldName,
-				required:	true,
-				value:      undefined,
-				jsDoc:		undefined
-			}
-			clazzFields.push(fieldDesc);
-			classFieldsMap[fieldName]= fieldDesc;
-			var fieldChilds= field.getChildren();
-			var j, jLen;
-			console.log('>> Field:', fieldDesc.name)
-			for (j = 0, jLen= fieldChilds.length; j < jLen; j++) {
-				var fieldChild= fieldChilds[j];
-				switch(fieldChild.kind){
-					case ts.SyntaxKind.QuestionToken:
-						fieldDesc.required= false;
-						break;
-					case ts.SyntaxKind.JSDocComment:
-						fieldDesc.jsDoc= fieldChild.getChildren().map(e=> e.getText()).join("\n");
-						break;
-					case ts.SyntaxKind.TypeReference:
-						//TODO
-						break
-					case ts.SyntaxKind.StringKeyword:
-						// string
-						break
-					case ts.SyntaxKind.BooleanKeyword:
-						// string
-						break
-					case ts.SyntaxKind.NumberKeyword:
-						// string
-						break
-					case ts.SyntaxKind.SymbolKeyword:
-						// string
-						break
-					case ts.SyntaxKind.BigIntKeyword:
-						// string
-						break
-					default:
-						throw new Error(`Enexpected field type at ${clazz.name}.${fieldDesc.name} :: ${fieldChild.getStart()}`);
+			case ts.SyntaxKind.PropertySignature:
+				// Class or interface property
+				if(parentNode){
+					if(parentNode.kind!== ModelKind.PLAIN_OBJECT)
+						throw new Error(`Expected parent node to be interface or class, got ${ts.SyntaxKind[node.kind]} at ${node.getStart()}`);
+					currentNode={
+						kind:		ModelKind.FIELD,
+						name:		(node as PropertySignature).name.getText(),
+						jsDoc:		undefined,
+						required:	true,
+						ref:		undefined
+					};
+					parentNode.fields.push(currentNode);
+					parentNode.fieldMap[currentNode.name!]= currentNode;
+				} else {
+					console.log('---------------- found property without parent class')
 				}
-			}
+			case ts.SyntaxKind.ArrayType:
+				// TODO
+				break;
+			case ts.SyntaxKind.TypeLiteral:
+				//TODO syntax value as new object
+				break;
+			case ts.SyntaxKind.QuestionToken:
+				// make field optional
+				if(parentNode && parentNode.kind === ModelKind.FIELD){
+					parentNode.required= false;
+				}
+				break;
+			case ts.SyntaxKind.JSDocComment:
+				if(parentNode){
+					parentNode.jsDoc= node.getChildren().map(e=> e.getText()).join("\n");
+				}
+				break;
+			case ts.SyntaxKind.TypeReference:
+			case ts.SyntaxKind.StringKeyword:
+			case ts.SyntaxKind.BooleanKeyword:
+			case ts.SyntaxKind.NumberKeyword:
+			case ts.SyntaxKind.SymbolKeyword:
+			case ts.SyntaxKind.BigIntKeyword:
+				if(parentNode){
+					switch(parentNode.kind){
+						case ModelKind.FIELD:
+						case ModelKind.LIST:
+							parentNode.ref= node.getText();
+							break;
+					}
+				}
+				// string
+				break
+			case ts.SyntaxKind.ArrayType:
+				// console.log('Array: ', (node as ts.ArrayTypeNode).elementType)
+				currentNode= {
+					kind:	ModelKind.LIST,
+					name:	undefined,
+					jsDoc:	undefined,
+					ref:	undefined
+				}
+				break;
+			/** Tuple as Multipe types */
+			case ts.SyntaxKind.TupleType:
+				throw new Error(`Tuples are not supported, do you mean multiple types? at: ${node.getStart()}`);
+			// default:
+			// 	console.log(`${ts.SyntaxKind[node.kind]}: ${node.getFullText()}`)
 		}
-		console.log('------------------END-----------------')
+		return ts.visitEachChild(node, visitorCb.bind(null, currentNode), ctx);
 	}
 	/** Return */
-	return visitorCb;
+	return visitorCb.bind(null, undefined);
 }
 
 /** Check has not "@tsmodel" flag */

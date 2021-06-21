@@ -9,11 +9,14 @@ export enum ModelKind{
 	UNION,
 
 	/** Reference to an other Model node */
-	REF
+	REF,
+
+	/** Field */
+	FIELD
 }
 
 /** Model node */
-export type ModelNode= ModelObjectNode | ModelListNode | ModelRefNode | ModelUnionNode
+export type ModelNode= ModelObjectNode | ModelListNode | ModelRefNode | ModelUnionNode | ObjectField
 
 /** Model node AST */
 export interface ModelBaseNode{
@@ -33,7 +36,7 @@ export interface ModelObjectNode extends ModelBaseNode{
 /** List kinds */
 export interface ModelListNode extends ModelBaseNode{
 	kind:		ModelKind.LIST
-	value:		ModelNode
+	ref:		string|undefined
 }
 
 /** Union of multiple kinds */
@@ -51,15 +54,12 @@ export interface ModelRefNode extends ModelBaseNode{
 }
 
 /** Object fields */
-export interface ObjectField{
-	/** Field name */
-	name:	string
-	/** Field value */
-	value:	ModelNode|undefined
+export interface ObjectField extends ModelBaseNode{
+	kind: ModelKind.FIELD,
+	/** Reference */
+	ref:	string|undefined
 	/** Is required */
-	required:	boolean,
-	/** Comment */
-	jsDoc:		string | undefined
+	required:	boolean
 }
 
 

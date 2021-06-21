@@ -19,7 +19,12 @@ export interface UserModel {
 	/** Those are bookings */
 	Bookings?: Booking[]
 
-	message: string
+	message: string,
+
+	history:
+		{
+			ar1: string
+		}[]
 }
 
 /** @tsmodel */
