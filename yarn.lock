@@ -2119,6 +2119,11 @@ ret@~0.1.10:
   resolved "https://registry.yarnpkg.com/ret/-/ret-0.1.15.tgz#b8a4825d5bdb1fc3f6f53c2bc33f81388681c7bc"
   integrity sha512-TTlYpa+OL+vMMNG24xSlQGEJ3B/RzEfUlLct7b5G/ytav+wPrplCpVMFuwzXbkecJrb6IYo1iFb0S9v37754mg==
 
+return@^1.0.0:
+  version "1.0.0"
+  resolved "https://registry.yarnpkg.com/return/-/return-1.0.0.tgz#f2a1644ea84898cd6b28583021c67853cff40b42"
+  integrity sha1-8qFkTqhImM1rKFgwIcZ4U8/0C0I=
+
 safe-buffer@^5.1.0, safe-buffer@~5.2.0:
   version "5.2.1"
   resolved "https://registry.yarnpkg.com/safe-buffer/-/safe-buffer-5.2.1.tgz#1eaf9fa9bdb1fdd4ec75f58f9cdb4e6b7827eec6"
@@ -2448,6 +2453,11 @@ to-through@^2.0.0:
   integrity sha1-/JKtq6ByZHvAtn1rA2ZKoZUJOvY=
   dependencies:
     through2 "^2.0.3"
+
+treeify@^1.1.0:
+  version "1.1.0"
+  resolved "https://registry.yarnpkg.com/treeify/-/treeify-1.1.0.tgz#4e31c6a463accd0943879f30667c4fdaff411bb8"
+  integrity sha512-1m4RA7xVAJrSGrrXGs0L3YTwyvBs2S8PbRHaLZAkFw7JR8oIFwYtysxlBZhYIa7xSyiYJKZ3iGrrk55cGA3i9A==
 
 ts-node@^10.0.0:
   version "10.0.0"

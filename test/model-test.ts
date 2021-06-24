@@ -9,7 +9,10 @@ export interface UserModel {
 	/** This is firstname */
 	firstName?: string,
 	lastName?: string,
-	/** This field is required! */
+	/**
+	 * This field is required!
+	 * Oh yeah, required :D
+	 */
 	fullName: string,
 
 	/** Custom type Email */
@@ -36,12 +39,12 @@ export type ID= string;
 /** @tsmodel */
 export class UserResolvers implements ResolversOf<UserModel>{
 	/** Overriding booking comment */
-	Bookings(parent: any, args: any, context: any, infos: any){
+	Bookings(parent: any, args: string[], context: any, infos: any):void{
 		// this is a resolver
 	}
 
 	/** a message */
-	message(parent: any, args: any, context: any, infos: any): string{
+	message(parent: any, args: Booking, context: any, infos: any): string{
 		return 'hello'
 	}
 }

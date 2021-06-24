@@ -1,5 +1,7 @@
-import { ModelKind, ModelObjectNode, ObjectField, RootModel, ModelNode } from "@src/schema/model.js";
+import { ModelKind, RootModel, ModelNode, ModelObjectNode, ObjectField } from "@src/schema/model.js";
 import ts, { PropertySignature } from "typescript";
+//@ts-ignore
+import treefy from 'treeify';
 
 
 type TsClazzType= ts.ClassLikeDeclaration | ts.InterfaceDeclaration;
@@ -7,19 +9,54 @@ type TsClazzType= ts.ClassLikeDeclaration | ts.InterfaceDeclaration;
 /**
  * Transforme typescript interfaces and classes to Models
  */
-export function createBeforeTransformer(){
-	// return transformer
-	return function(ctx: ts.TransformationContext): ts.Transformer<ts.SourceFile>{
-		return function(sf: ts.SourceFile){ return ts.visitNode(sf, _visitor(ctx, sf)); }
+export function createTransformer(){
+	const mapRoots: Map<string, RootModel>= new Map();
+	return {
+		/** Before */
+		before(ctx: ts.TransformationContext): ts.Transformer<ts.SourceFile>{
+			return function(sf: ts.SourceFile){
+				// Prepare root node
+				const root: RootModel= {
+					models:	[],
+					map:	{}
+				};
+				mapRoots.set(sf.fileName, root);
+				// Visit node
+				return ts.visitNode(sf, _visitor(ctx, sf, root));
+			}
+		},
+		/** After */
+		after(ctx: ts.TransformationContext): ts.Transformer<ts.SourceFile>{
+			return function(sf: ts.SourceFile){
+				// print node
+				var fileName= sf.fileName;
+				//- TEST
+				var t= mapRoots.get(fileName);
+				if(t?.models.length){
+					console.log(sf.fileName, '>>\n');
+					console.log(treefy.asTree( t.map , true ))
+				}
+				//- TEST
+				function visitorCb(node: ts.Node): ts.VisitResult<ts.Node>{
+					return ts.visitEachChild(node, visitorCb, ctx);
+				}
+				return ts.visitNode(sf, visitorCb);
+			}
+		}
 	}
 }
 
 /** Visitor */
-function _visitor(ctx:ts.TransformationContext, sf:ts.SourceFile): ts.Visitor{
-	/** Root class */
-	const root: RootModel= {
-		models:	[],
-		map:	{}
+function _visitor(ctx:ts.TransformationContext, sf:ts.SourceFile, root: RootModel): ts.Visitor{
+	/** Add entity */
+	function _addEntity(entity: ModelNode, node: ts.Node){
+		var calzzName= entity.name;
+		if(!calzzName)
+			throw new Error(`Expected entity name at: ${node.getStart()}`);
+		if(root.map[calzzName])
+			throw new Error(`Duplicated entity name: ${calzzName}`);
+		root.map[calzzName]= entity;
+		root.models.push(entity);
 	}
 	/** Visitor callback */
 	function visitorCb(parentNode: ModelNode|undefined ,node: ts.Node): ts.VisitResult<ts.Node>{
@@ -28,19 +65,19 @@ function _visitor(ctx:ts.TransformationContext, sf:ts.SourceFile): ts.Visitor{
 		switch(node.kind){
 			case ts.SyntaxKind.InterfaceDeclaration:
 			case ts.SyntaxKind.ClassDeclaration:
-				// Classes and interfaces could not have parent node (at least for now)
-				if(parentNode)
-					throw new Error(`Enexpected ${parentNode.name}::${ts.SyntaxKind[node.kind]} at line: ${node.getStart()}`);
-				if(_isTsModel(node)){
-					if(!(node as TsClazzType).name)
-						throw new Error(`Expected interface name at: ${node.getStart()}`);
+			case ts.SyntaxKind.TypeLiteral:
+				if(parentNode || _isTsModel(node)){
 					currentNode= {
-						name:		(node as TsClazzType).name!.getText(),
+						name:		(node as TsClazzType).name?.getText(),
 						kind:		ModelKind.PLAIN_OBJECT,
 						jsDoc:		undefined,
 						fields:		[],
 						fieldMap:	{}
-					}
+					};
+					if(parentNode)
+						(parentNode as ObjectField).value= currentNode;
+					else
+						_addEntity(currentNode, node);
 				}
 				break;
 			case ts.SyntaxKind.EnumDeclaration:
@@ -54,7 +91,7 @@ function _visitor(ctx:ts.TransformationContext, sf:ts.SourceFile): ts.Visitor{
 				if(_isTsModel(node)){
 					console.log(node.getFullText());
 				}
-				break
+				break;
 			case ts.SyntaxKind.PropertySignature:
 				// Class or interface property
 				if(parentNode){
@@ -65,18 +102,18 @@ function _visitor(ctx:ts.TransformationContext, sf:ts.SourceFile): ts.Visitor{
 						name:		(node as PropertySignature).name.getText(),
 						jsDoc:		undefined,
 						required:	true,
-						ref:		undefined
+						value:		undefined
 					};
 					parentNode.fields.push(currentNode);
 					parentNode.fieldMap[currentNode.name!]= currentNode;
+					var i, len, childs= node.getChildren();
+					for(i=0, len=childs.length; i<len; i++){
+						visitorCb(currentNode, childs[i]);
+					}
+					return node;
 				} else {
-					console.log('---------------- found property without parent class')
+					console.log('---------------- found property without parent class: ', node.getText())
 				}
-			case ts.SyntaxKind.ArrayType:
-				// TODO
-				break;
-			case ts.SyntaxKind.TypeLiteral:
-				//TODO syntax value as new object
 				break;
 			case ts.SyntaxKind.QuestionToken:
 				// make field optional
@@ -86,7 +123,7 @@ function _visitor(ctx:ts.TransformationContext, sf:ts.SourceFile): ts.Visitor{
 				break;
 			case ts.SyntaxKind.JSDocComment:
 				if(parentNode){
-					parentNode.jsDoc= node.getChildren().map(e=> e.getText()).join("\n");
+					parentNode.jsDoc= node.getText().replace(/^\s*\*|^\s*\/\*\*|\s*\*\/\s*$/gm, '');
 				}
 				break;
 			case ts.SyntaxKind.TypeReference:
@@ -99,26 +136,86 @@ function _visitor(ctx:ts.TransformationContext, sf:ts.SourceFile): ts.Visitor{
 					switch(parentNode.kind){
 						case ModelKind.FIELD:
 						case ModelKind.LIST:
-							parentNode.ref= node.getText();
+						case ModelKind.METHOD:
+						case ModelKind.PARAM:
+							parentNode.value= {
+								kind:	ModelKind.REF,
+								name:	undefined,
+								jsDoc:	undefined,
+								value:	node.getText()
+							}
 							break;
+						default:
+							console.warn(`>> Escaped ${ts.SyntaxKind[node.kind]} at ${node.getStart()}`);
 					}
 				}
 				// string
 				break
 			case ts.SyntaxKind.ArrayType:
-				// console.log('Array: ', (node as ts.ArrayTypeNode).elementType)
 				currentNode= {
 					kind:	ModelKind.LIST,
 					name:	undefined,
 					jsDoc:	undefined,
-					ref:	undefined
+					value:	undefined
+				}
+				if(parentNode){
+					switch(parentNode.kind){
+						case ModelKind.FIELD:
+						case ModelKind.LIST:
+						case ModelKind.METHOD:
+						case ModelKind.PARAM:
+							parentNode.value= currentNode;
+							break;
+						default:
+							console.warn(`>> Escaped ${ts.SyntaxKind[node.kind]} at ${node.getStart()}`);
+					}
 				}
 				break;
 			/** Tuple as Multipe types */
 			case ts.SyntaxKind.TupleType:
 				throw new Error(`Tuples are not supported, do you mean multiple types? at: ${node.getStart()}`);
-			// default:
-			// 	console.log(`${ts.SyntaxKind[node.kind]}: ${node.getFullText()}`)
+			/** Method declaration */
+			case ts.SyntaxKind.MethodDeclaration:
+				if(parentNode){
+					if(parentNode.kind!== ModelKind.PLAIN_OBJECT)
+						throw new Error(`Expected parent node to be interface or class, got ${ts.SyntaxKind[node.kind]} at ${node.getStart()}`);
+					currentNode= {
+						kind:		ModelKind.METHOD,
+						name:		(node as ts.MethodDeclaration).name.getText(),
+						jsDoc:		undefined,
+						value:		undefined,
+						argParam:	undefined
+					}
+					parentNode.fields.push(currentNode);
+					parentNode.fieldMap[currentNode.name!]= currentNode;
+					// Go trough childs
+					var i, len, childs= node.getChildren();
+					for(i=0, len=childs.length; i<len; i++){
+						visitorCb(currentNode, childs[i]);
+					}
+					// Go through arg param
+					var params= (node as ts.MethodDeclaration).parameters;
+					if(params && params.length>2){
+						visitorCb(currentNode, params[1]);
+					}
+					return node;
+				}
+				break;
+			case ts.SyntaxKind.Parameter:
+				if(parentNode){
+					if(parentNode.kind !== ModelKind.METHOD)
+						throw new Error(`Enexpected param access at ${node.getStart()}`);
+					currentNode= {
+						kind:	ModelKind.PARAM,
+						name:	(node as ts.ParameterDeclaration).name.getText(),
+						jsDoc:	undefined,
+						value: undefined
+					};
+					parentNode.argParam= currentNode;
+				}
+				break;
+			default:
+				console.log(`${ts.SyntaxKind[node.kind]}: ${node.getFullText()}`)
 		}
 		return ts.visitEachChild(node, visitorCb.bind(null, currentNode), ctx);
 	}
