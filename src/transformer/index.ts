@@ -209,7 +209,7 @@ function _visitor(ctx:ts.TransformationContext, sf:ts.SourceFile, root: RootMode
 						kind:	ModelKind.PARAM,
 						name:	(node as ts.ParameterDeclaration).name.getText(),
 						jsDoc:	undefined,
-						value: undefined
+						value:	undefined
 					};
 					parentNode.argParam= currentNode;
 				}
