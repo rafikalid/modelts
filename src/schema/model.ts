@@ -1,3 +1,5 @@
+import ts from "typescript";
+
 /** Model kinds */
 export enum ModelKind{
 	PLAIN_OBJECT,
@@ -37,6 +39,7 @@ export interface ModelObjectNode extends ModelBaseNode{
 	kind:		ModelKind.PLAIN_OBJECT
 	fields:		(ObjectField|ModelMethod)[]
 	fieldMap:	Record<string, ObjectField|ModelMethod>
+	isClass:	boolean
 }
 
 /** List kinds */
@@ -68,11 +71,13 @@ export interface ObjectField extends ModelBaseNode{
 	value:	ModelNode | undefined
 }
 
+export const MethodAttr= Symbol('method');
 /** Method */
 export interface ModelMethod extends ModelBaseNode{
-	kind:		ModelKind.METHOD
-	value:		ModelNode | undefined,
-	argParam:	ModelNode | undefined
+	kind:			ModelKind.METHOD
+	value:			ModelNode | undefined,
+	argParam:		ModelNode | undefined,
+	[MethodAttr]:	ts.MethodDeclaration // method declaration
 }
 
 
@@ -80,6 +85,8 @@ export interface ModelMethod extends ModelBaseNode{
 export interface RootModel{
 	models: ModelNode[]
 	map:	Record<string, ModelNode>
+	/** Model fx name */
+	modelFx: string|undefined
 }
 
 /** Param */
