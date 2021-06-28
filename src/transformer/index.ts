@@ -18,6 +18,7 @@ export function createTransformer() {
 		/** Before */
 		before(ctx: ts.TransformationContext): ts.Transformer<ts.SourceFile> {
 			return function (sf: ts.SourceFile) {
+				console.log('-----FILE: ', sf.fileName)
 				// Prepare root node
 				const root: RootModel = {
 					mapChilds:	{},
@@ -32,6 +33,7 @@ export function createTransformer() {
 		/** After */
 		after(ctx: ts.TransformationContext): ts.Transformer<ts.SourceFile> {
 			return function (sf: ts.SourceFile) {
+				console.log('-----AFTER>> FILE: ', sf.fileName)
 				function visitorCb(node: ts.Node): ts.VisitResult<ts.Node> {
 					var fileName = sf.fileName;
 					var t = mapRoots.get(fileName);
@@ -49,7 +51,6 @@ export function createTransformer() {
 
 /** Visitor */
 function _visitor(ctx: ts.TransformationContext, sf: ts.SourceFile, root: RootModel): ts.Visitor {
-	console.log('-----FILE: ', sf.fileName)
 	/** Add entity */
 	function _addEntity(entity: ModelNode, node: ts.Node) {
 		var calzzName = entity.name;
@@ -85,12 +86,26 @@ function _visitor(ctx: ts.TransformationContext, sf: ts.SourceFile, root: RootMo
 						(parentNode as ObjectField).children.push(currentNode);
 					else
 						_addEntity(currentNode, node);
+				} else {
+					return node;
 				}
 				break;
 			case ts.SyntaxKind.EnumDeclaration:
-				console.log('----------------------------------------->> ENUM: ')
 				if (_isTsModel(node)) {
-					// console.log(node.getFullText());
+					currentNode = {
+						name:		(node as ts.EnumDeclaration).name?.getText(),
+						kind:		ModelKind.ENUM,
+						jsDoc:		undefined,
+						children:	[],
+						mapChilds:	{}
+					};
+					if (parentNode)
+						// Field
+						(parentNode as ObjectField).children.push(currentNode);
+					else
+						_addEntity(currentNode, node);
+				} else {
+					return node;
 				}
 				break;
 			case ts.SyntaxKind.TypeAliasDeclaration:
@@ -122,6 +137,30 @@ function _visitor(ctx: ts.TransformationContext, sf: ts.SourceFile, root: RootMo
 					console.log('---------------- found property without parent class: ', node.getText())
 				}
 				break;
+			case ts.SyntaxKind.EnumMember:
+				if(parentNode){
+					if (parentNode.kind!== ModelKind.ENUM)
+						throw new Error(`Expected parent node to ENUM, got ${ts.SyntaxKind[node.kind]} at ${node.getStart()}`);
+					currentNode = {
+						kind: ModelKind.FIELD,
+						name: (node as PropertySignature).name.getText(),
+						jsDoc: undefined,
+						required: true,
+						children: []
+					};
+					parentNode.children.push(currentNode);
+					parentNode.mapChilds[currentNode.name!] = currentNode;
+					var i, len, childs = node.getChildren();
+					console.log('----enum value: ', (node as ts.EnumMember).getLastToken()?.getText())
+					for (i = 0, len = childs.length; i < len; i++) {
+						console.log('--- ENUM child', ts.SyntaxKind[childs[i].kind],'::', childs[i].getText())
+						visitorCb(currentNode, childs[i]);
+					}
+					return node;
+				} else {
+					throw new Error(`Enexpected enum member at: ${node.getText()}: ${node.getStart()}`)
+				}
+				break;
 			case ts.SyntaxKind.QuestionToken:
 				// make field optional
 				if (parentNode && parentNode.kind === ModelKind.FIELD) {
@@ -139,13 +178,15 @@ function _visitor(ctx: ts.TransformationContext, sf: ts.SourceFile, root: RootMo
 			case ts.SyntaxKind.NumberKeyword:
 			case ts.SyntaxKind.SymbolKeyword:
 			case ts.SyntaxKind.BigIntKeyword:
+			// case ts.SyntaxKind.VoidKeyword:
+			// case ts.SyntaxKind.AnyKeyword:
 				if (parentNode) {
 					switch (parentNode.kind) {
 						case ModelKind.FIELD:
 						case ModelKind.LIST:
 						case ModelKind.METHOD:
 						case ModelKind.PARAM:
-							parentNode.children[1] = {
+							parentNode.children[0] = {
 								kind: ModelKind.REF,
 								name: undefined,
 								jsDoc: undefined,
@@ -186,13 +227,16 @@ function _visitor(ctx: ts.TransformationContext, sf: ts.SourceFile, root: RootMo
 				if (parentNode) {
 					if (parentNode.kind !== ModelKind.PLAIN_OBJECT)
 						throw new Error(`Expected parent node to be interface or class, got ${ts.SyntaxKind[node.kind]} at ${node.getText()}: ${node.getStart()}`);
+					var methodName= (node as ts.MethodDeclaration).name.getText();
 					currentNode = {
 						kind:		ModelKind.METHOD,
-						name:		(node as ts.MethodDeclaration).name.getText(),
+						name:		methodName,
 						jsDoc:		undefined,
-						method:		node as ts.MethodDeclaration,
+						// method:		node as ts.MethodDeclaration,
+						method: `${parentNode.name}.prototype.${methodName}`,
+						/** [ResultType, ParamType] */
 						children:	[undefined, undefined],
-					}
+					};
 					parentNode.children.push(currentNode);
 					parentNode.mapChilds[currentNode.name!] = currentNode;
 					// Go trough childs
@@ -218,7 +262,7 @@ function _visitor(ctx: ts.TransformationContext, sf: ts.SourceFile, root: RootMo
 						jsDoc: undefined,
 						children: []
 					};
-					parentNode.children[0] = currentNode;
+					parentNode.children[1] = currentNode;
 				}
 				break;
 			// default:
@@ -277,12 +321,17 @@ function _addAst(root: RootModel, ctx: ts.TransformationContext) {
 			case ts.SyntaxKind.NewExpression:
 				if (node.getChildAt(1).getText() === root.modelFx) {
 					// convert
-					return ctx.factory.updateNewExpression(
-						node as ts.NewExpression,
+					return ctx.factory.createNewExpression(
 						(node as ts.NewExpression).expression,
 						(node as ts.NewExpression).typeArguments,
 						[_serializeAST(root, ctx)],
-					)
+					);
+					// return ctx.factory.updateNewExpression(
+					// 	node as ts.NewExpression,
+					// 	(node as ts.NewExpression).expression,
+					// 	(node as ts.NewExpression).typeArguments,
+					// 	[_serializeAST(root, ctx)],
+					// )
 				}
 				break;
 		}
@@ -294,67 +343,84 @@ function _addAst(root: RootModel, ctx: ts.TransformationContext) {
 /** Serialize AST */
 function _serializeAST(root: RootModel, ctx: ts.TransformationContext): ts.Expression{
 	const factory= ctx.factory;
-	var fields:ts.Expression[]|undefined= []
-	const results: ts.Expression[][]= [fields];
+	var fields:ts.Expression[]|undefined;
+	const results: ts.Expression[][]= [[]];
 	const queue: ModelNode[][]= [root.children];
 	//-------
-	var i, len, props= root.children;
+	var i, props= root.children;
 	var j,jLen, prop, fieldNodes;
-	for(i=0, len= queue.length; i<len; ++i){
+	for(i=0; i<queue.length; ++i){
 		props= queue[i];
 		fieldNodes= results[i];
-		for(j=0, jLen= props.length; j<len; ++j){
-			prop= props[j];
-			// Common fields
-			var nodeProperties= [
-				factory.createPropertyAssignment( factory.createIdentifier("name"), prop.name==null? factory.createIdentifier("undefined") : factory.createStringLiteral(prop.name)),
-				factory.createPropertyAssignment( factory.createIdentifier("kind"), factory.createNumericLiteral(prop.kind)),
-				factory.createPropertyAssignment( factory.createIdentifier("jsDoc"), prop.jsDoc==null? factory.createIdentifier("undefined") : factory.createStringLiteral(prop.jsDoc))
-			];
-			switch(prop.kind){
-				case ModelKind.PLAIN_OBJECT:
+		for(j=0, jLen= props.length; j<jLen; ++j)
+			if(prop= props[j]){
+				// Common fields
+				var nodeProperties: ts.ObjectLiteralElementLike[]= [
+					factory.createPropertyAssignment( factory.createIdentifier("name"), prop.name==null? factory.createIdentifier("undefined") : factory.createStringLiteral(prop.name)),
+					factory.createPropertyAssignment( factory.createIdentifier("kind"), factory.createNumericLiteral(prop.kind)),
+					factory.createPropertyAssignment( factory.createIdentifier("jsDoc"), prop.jsDoc==null? factory.createIdentifier("undefined") : factory.createStringLiteral(prop.jsDoc))
+				];
+				switch(prop.kind){
+					case ModelKind.PLAIN_OBJECT:
+						nodeProperties.push(
+							// isClass
+							factory.createPropertyAssignment(factory.createIdentifier("isClass"), prop.isClass ? factory.createTrue(): factory.createFalse())
+						);
+					case ModelKind.FIELD:
+						nodeProperties.push(
+							factory.createPropertyAssignment(factory.createIdentifier("required"), (prop as ObjectField).required ? factory.createTrue(): factory.createFalse())
+						);
+						break;
+					case ModelKind.METHOD:
+						nodeProperties.push(
+							factory.createPropertyAssignment(
+								factory.createIdentifier("method"),
+								factory.createIdentifier(prop.method)
+							)
+						);
+						// nodeProperties.push(
+						// 	factory.createMethodDeclaration(
+						// 		undefined, //method.decorators,
+						// 		undefined, //method.modifiers,
+						// 		method.asteriskToken,
+						// 		factory.createIdentifier('method'),
+						// 		method.questionToken,
+						// 		undefined, //method.typeParameters,
+						// 		method.parameters,
+						// 		undefined, //method.type,
+						// 		method.body
+						// 	)
+						// );
+						break;
+					case ModelKind.REF:
+						nodeProperties.push(
+							factory.createPropertyAssignment(factory.createIdentifier("value"), factory.createStringLiteral(prop.value))
+						);
+						break;
+				}
+				// Add children
+				if((prop as ModelNodeWithChilds).children){
+					fields= [];
 					nodeProperties.push(
-						// isClass
-						factory.createPropertyAssignment(factory.createIdentifier("isClass"), prop.isClass ? factory.createTrue(): factory.createFalse())
+						factory.createPropertyAssignment(
+							factory.createIdentifier("children"),
+							factory.createArrayLiteralExpression( fields, true )
+						)
 					);
-				case ModelKind.FIELD:
-					nodeProperties.push(
-						factory.createPropertyAssignment(factory.createIdentifier("required"), (prop as ObjectField).required ? factory.createTrue(): factory.createFalse())
-					);
-					break;
-				case ModelKind.METHOD:
-					nodeProperties.push(
-						//FIXME add method declaration
-						factory.createPropertyAssignment(factory.createIdentifier("required"), factory.createIdentifier('undefined'))
-					);
-					break;
-				case ModelKind.REF:
-					nodeProperties.push(
-						factory.createPropertyAssignment(factory.createIdentifier("value"), factory.createStringLiteral(prop.value))
-					);
-					break;
+					queue.push((prop as ModelNodeWithChilds).children);
+					results.push(fields);
+				}
+				// Add to parent
+				fieldNodes.push(factory.createObjectLiteralExpression(nodeProperties));
+			} else {
+				fieldNodes.push(factory.createIdentifier('undefined'));
 			}
-			// Add children
-			if((prop as ModelNodeWithChilds).children){
-				fields= [];
-				nodeProperties.push(
-					factory.createPropertyAssignment(
-						factory.createIdentifier("children"),
-						factory.createArrayLiteralExpression( fields, false )
-					)
-				);
-				queue.push((prop as ModelNodeWithChilds).children);
-				results.push(fields);
-			}
-			// Add to parent
-			fieldNodes.push(factory.createObjectLiteralExpression(nodeProperties));
-		}
 	}
 	return factory.createObjectLiteralExpression([
 		//Models
 		factory.createPropertyAssignment(
-			factory.createIdentifier("childen"),
-			factory.createArrayLiteralExpression( fields, false )
+			factory.createIdentifier("children"),
+			factory.createArrayLiteralExpression( results[0], true )
 		),
 	]);
 	//return ctx.factory.createIdentifier(JSON.stringify(root));

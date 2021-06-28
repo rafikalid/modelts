@@ -3,6 +3,7 @@ import {createTransformer} from '../dist/transformer/index.js';
 import Gulp from 'gulp';
 import GulpTypescript from 'gulp-typescript';
 import SrcMap from 'gulp-sourcemaps';
+import ts from 'typescript';
 
 const {src, dest, lastRun}= Gulp;
 
@@ -14,8 +15,8 @@ const TsProject = GulpTypescript.createProject('tsconfig.json', {
 	removeComments: isProd,
 	pretty: !isProd,
 	getCustomTransformers: ()=>({
-		before: [ transformer.before ],
-		after: [ transformer.after ],
+		before: [ transformer.before, transformer.after ],
+		//after: [  ],
 	})
 });
 

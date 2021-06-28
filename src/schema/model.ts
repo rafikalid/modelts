@@ -1,8 +1,12 @@
+import { Model } from "@src/model/model";
 import ts from "typescript";
 
 /** Model kinds */
 export enum ModelKind{
 	PLAIN_OBJECT,
+
+	/** Enumeration */
+	ENUM,
 
 	/** List of sub entries */
 	LIST,
@@ -24,7 +28,7 @@ export enum ModelKind{
 }
 
 /** Model node */
-export type ModelNode= ModelObjectNode | ModelListNode | ModelRefNode | ModelUnionNode | ObjectField | ModelMethod | ModelParam
+export type ModelNode= ModelObjectNode | ModelEnumNode | ModelListNode | ModelRefNode | ModelUnionNode | ObjectField | ModelMethod | ModelParam
 
 /** Model node AST */
 export interface ModelBaseNode{
@@ -44,6 +48,12 @@ export interface ModelObjectNode extends ModelNodeWithChilds{
 	kind:		ModelKind.PLAIN_OBJECT
 	mapChilds:	Record<string, ObjectField|ModelMethod>
 	isClass:	boolean
+}
+
+/** Enum */
+export interface ModelEnumNode extends ModelNodeWithChilds{
+	kind:		ModelKind.ENUM,
+	mapChilds:	Record<string, ObjectField>
 }
 
 /** List kinds */
@@ -73,12 +83,13 @@ export interface ObjectField extends ModelNodeWithChilds{
 export const MethodAttr= Symbol('method');
 /**
  * Method
- * ::childs[0] arg type
- * ::childs[1] result type
+ * ::childs[0] result type
+ * ::childs[1] arg type
  */
 export interface ModelMethod extends ModelBaseNode{
 	kind:	ModelKind.METHOD
-	method:	ts.MethodDeclaration // method declaration
+	// method:	ts.MethodDeclaration // method declaration
+	method: string,
 	children: [ModelNode|undefined, ModelNode|undefined]
 }
 

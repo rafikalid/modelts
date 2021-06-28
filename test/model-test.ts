@@ -1,5 +1,4 @@
 import { Model, resolver } from "@src/index.js";
-import { Model as ModelSASA } from "@src/index.js";
 import { ResolversOf } from "@src/index.js";
 
 /**
@@ -60,6 +59,21 @@ export class UserResolvers implements ResolversOf<UserModel>{
 export interface Booking{
 	id: ID,
 	name: string
+}
+
+/**
+ * @tsmodel
+ * Enum
+ */
+export enum roles{
+	/** A basic employee role */
+	basicEmployee,
+	/** Normal employee role */
+	employee=5825,
+	/** Store manager */
+	manager='managerValue',
+	/** Store owner */
+	owner='ownerValue'
 }
 
 /** Model */
