@@ -1,4 +1,4 @@
-import { ModelKind, RootModel, ModelNode, ObjectField, MethodAttr } from "@src/schema/model.js";
+import { ModelKind, RootModel, ModelNode, ObjectField, MethodAttr, ModelNodeWithChilds } from "@src/schema/model.js";
 import ts, { PropertySignature } from "typescript";
 //@ts-ignore
 import treefy from 'treeify';
@@ -20,9 +20,9 @@ export function createTransformer() {
 			return function (sf: ts.SourceFile) {
 				// Prepare root node
 				const root: RootModel = {
-					models: [],
-					map: {},
-					modelFx: undefined
+					mapChilds:	{},
+					children:	[],
+					modelFx:	undefined
 				};
 				mapRoots.set(sf.fileName, root);
 				// Visit node
@@ -35,7 +35,7 @@ export function createTransformer() {
 				function visitorCb(node: ts.Node): ts.VisitResult<ts.Node> {
 					var fileName = sf.fileName;
 					var t = mapRoots.get(fileName);
-					if (t?.models.length) {
+					if (t?.children.length) {
 						return ts.visitEachChild(node, _addAst(t, ctx), ctx);
 					} else {
 						return node;
@@ -49,15 +49,16 @@ export function createTransformer() {
 
 /** Visitor */
 function _visitor(ctx: ts.TransformationContext, sf: ts.SourceFile, root: RootModel): ts.Visitor {
+	console.log('-----FILE: ', sf.fileName)
 	/** Add entity */
 	function _addEntity(entity: ModelNode, node: ts.Node) {
 		var calzzName = entity.name;
 		if (!calzzName)
 			throw new Error(`Expected entity name at: ${node.getStart()}`);
-		if (root.map[calzzName])
+		if (root.mapChilds[calzzName])
 			throw new Error(`Duplicated entity name: ${calzzName}`);
-		root.map[calzzName] = entity;
-		root.models.push(entity);
+		root.mapChilds[calzzName] = entity;
+		root.children.push(entity);
 	}
 	/** Visitor callback */
 	function visitorCb(parentNode: ModelNode | undefined, node: ts.Node): ts.VisitResult<ts.Node> {
@@ -72,15 +73,16 @@ function _visitor(ctx: ts.TransformationContext, sf: ts.SourceFile, root: RootMo
 			case ts.SyntaxKind.TypeLiteral:
 				if (parentNode || _isTsModel(node)) {
 					currentNode = {
-						name: (node as TsClazzType).name?.getText(),
-						kind: ModelKind.PLAIN_OBJECT,
-						jsDoc: undefined,
-						fields: [],
-						fieldMap: {},
-						isClass:	node.kind===ts.SyntaxKind.ClassDeclaration
+						name:		(node as TsClazzType).name?.getText(),
+						kind:		ModelKind.PLAIN_OBJECT,
+						jsDoc:		undefined,
+						children:	[],
+						mapChilds:	{},
+						isClass:	node.kind === ts.SyntaxKind.ClassDeclaration
 					};
 					if (parentNode)
-						(parentNode as ObjectField).value = currentNode;
+						// Field
+						(parentNode as ObjectField).children.push(currentNode);
 					else
 						_addEntity(currentNode, node);
 				}
@@ -107,10 +109,10 @@ function _visitor(ctx: ts.TransformationContext, sf: ts.SourceFile, root: RootMo
 						name: (node as PropertySignature).name.getText(),
 						jsDoc: undefined,
 						required: true,
-						value: undefined
+						children: []
 					};
-					parentNode.fields.push(currentNode);
-					parentNode.fieldMap[currentNode.name!] = currentNode;
+					parentNode.children.push(currentNode);
+					parentNode.mapChilds[currentNode.name!] = currentNode;
 					var i, len, childs = node.getChildren();
 					for (i = 0, len = childs.length; i < len; i++) {
 						visitorCb(currentNode, childs[i]);
@@ -143,7 +145,7 @@ function _visitor(ctx: ts.TransformationContext, sf: ts.SourceFile, root: RootMo
 						case ModelKind.LIST:
 						case ModelKind.METHOD:
 						case ModelKind.PARAM:
-							parentNode.value = {
+							parentNode.children[1] = {
 								kind: ModelKind.REF,
 								name: undefined,
 								jsDoc: undefined,
@@ -158,10 +160,10 @@ function _visitor(ctx: ts.TransformationContext, sf: ts.SourceFile, root: RootMo
 				break
 			case ts.SyntaxKind.ArrayType:
 				currentNode = {
-					kind: ModelKind.LIST,
-					name: undefined,
-					jsDoc: undefined,
-					value: undefined
+					kind:	ModelKind.LIST,
+					name:	undefined,
+					jsDoc:	undefined,
+					children: []
 				}
 				if (parentNode) {
 					switch (parentNode.kind) {
@@ -169,31 +171,30 @@ function _visitor(ctx: ts.TransformationContext, sf: ts.SourceFile, root: RootMo
 						case ModelKind.LIST:
 						case ModelKind.METHOD:
 						case ModelKind.PARAM:
-							parentNode.value = currentNode;
+							parentNode.children[0] = currentNode;
 							break;
 						default:
-							console.warn(`>> Escaped ${ts.SyntaxKind[node.kind]} at ${node.getStart()}`);
+							console.warn(`>> Escaped ${ts.SyntaxKind[node.kind]} at ${node.getText()}: ${node.getStart()}`);
 					}
 				}
 				break;
 			/** Tuple as Multipe types */
 			case ts.SyntaxKind.TupleType:
-				throw new Error(`Tuples are not supported, do you mean multiple types? at: ${node.getStart()}`);
+				throw new Error(`Tuples are not supported, do you mean multiple types? at: ${node.getText()}: ${node.getStart()}`);
 			/** Method declaration */
 			case ts.SyntaxKind.MethodDeclaration:
 				if (parentNode) {
 					if (parentNode.kind !== ModelKind.PLAIN_OBJECT)
-						throw new Error(`Expected parent node to be interface or class, got ${ts.SyntaxKind[node.kind]} at ${node.getStart()}`);
+						throw new Error(`Expected parent node to be interface or class, got ${ts.SyntaxKind[node.kind]} at ${node.getText()}: ${node.getStart()}`);
 					currentNode = {
-						kind: ModelKind.METHOD,
-						name: (node as ts.MethodDeclaration).name.getText(),
-						jsDoc: undefined,
-						value: undefined,
-						argParam: undefined,
-						[MethodAttr]: node as ts.MethodDeclaration
+						kind:		ModelKind.METHOD,
+						name:		(node as ts.MethodDeclaration).name.getText(),
+						jsDoc:		undefined,
+						method:		node as ts.MethodDeclaration,
+						children:	[undefined, undefined],
 					}
-					parentNode.fields.push(currentNode);
-					parentNode.fieldMap[currentNode.name!] = currentNode;
+					parentNode.children.push(currentNode);
+					parentNode.mapChilds[currentNode.name!] = currentNode;
 					// Go trough childs
 					var i, len, childs = node.getChildren();
 					for (i = 0, len = childs.length; i < len; i++) {
@@ -215,9 +216,9 @@ function _visitor(ctx: ts.TransformationContext, sf: ts.SourceFile, root: RootMo
 						kind: ModelKind.PARAM,
 						name: (node as ts.ParameterDeclaration).name.getText(),
 						jsDoc: undefined,
-						value: undefined
+						children: []
 					};
-					parentNode.argParam = currentNode;
+					parentNode.children[0] = currentNode;
 				}
 				break;
 			// default:
@@ -293,21 +294,68 @@ function _addAst(root: RootModel, ctx: ts.TransformationContext) {
 /** Serialize AST */
 function _serializeAST(root: RootModel, ctx: ts.TransformationContext): ts.Expression{
 	const factory= ctx.factory;
-	var fields:ts.Expression[]= []
-	const rootNode= factory.createObjectLiteralExpression([
+	var fields:ts.Expression[]|undefined= []
+	const results: ts.Expression[][]= [fields];
+	const queue: ModelNode[][]= [root.children];
+	//-------
+	var i, len, props= root.children;
+	var j,jLen, prop, fieldNodes;
+	for(i=0, len= queue.length; i<len; ++i){
+		props= queue[i];
+		fieldNodes= results[i];
+		for(j=0, jLen= props.length; j<len; ++j){
+			prop= props[j];
+			// Common fields
+			var nodeProperties= [
+				factory.createPropertyAssignment( factory.createIdentifier("name"), prop.name==null? factory.createIdentifier("undefined") : factory.createStringLiteral(prop.name)),
+				factory.createPropertyAssignment( factory.createIdentifier("kind"), factory.createNumericLiteral(prop.kind)),
+				factory.createPropertyAssignment( factory.createIdentifier("jsDoc"), prop.jsDoc==null? factory.createIdentifier("undefined") : factory.createStringLiteral(prop.jsDoc))
+			];
+			switch(prop.kind){
+				case ModelKind.PLAIN_OBJECT:
+					nodeProperties.push(
+						// isClass
+						factory.createPropertyAssignment(factory.createIdentifier("isClass"), prop.isClass ? factory.createTrue(): factory.createFalse())
+					);
+				case ModelKind.FIELD:
+					nodeProperties.push(
+						factory.createPropertyAssignment(factory.createIdentifier("required"), (prop as ObjectField).required ? factory.createTrue(): factory.createFalse())
+					);
+					break;
+				case ModelKind.METHOD:
+					nodeProperties.push(
+						//FIXME add method declaration
+						factory.createPropertyAssignment(factory.createIdentifier("required"), factory.createIdentifier('undefined'))
+					);
+					break;
+				case ModelKind.REF:
+					nodeProperties.push(
+						factory.createPropertyAssignment(factory.createIdentifier("value"), factory.createStringLiteral(prop.value))
+					);
+					break;
+			}
+			// Add children
+			if((prop as ModelNodeWithChilds).children){
+				fields= [];
+				nodeProperties.push(
+					factory.createPropertyAssignment(
+						factory.createIdentifier("children"),
+						factory.createArrayLiteralExpression( fields, false )
+					)
+				);
+				queue.push((prop as ModelNodeWithChilds).children);
+				results.push(fields);
+			}
+			// Add to parent
+			fieldNodes.push(factory.createObjectLiteralExpression(nodeProperties));
+		}
+	}
+	return factory.createObjectLiteralExpression([
 		//Models
 		factory.createPropertyAssignment(
-			factory.createIdentifier("models"),
+			factory.createIdentifier("childen"),
 			factory.createArrayLiteralExpression( fields, false )
 		),
 	]);
-	const queue:ts.Expression[][]= [fields];
-	const nodeQueue= [root.models];
-	//-------
-	var i, len, node, prop, props= root.models;
-	for(i=0, len= queue.length; i<len; ++i){
-		prop= queue[i];
-	}
-	return rootNode;
 	//return ctx.factory.createIdentifier(JSON.stringify(root));
 }

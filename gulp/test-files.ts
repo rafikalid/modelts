@@ -15,7 +15,7 @@ const TsProject = GulpTypescript.createProject('tsconfig.json', {
 	pretty: !isProd,
 	getCustomTransformers: ()=>({
 		before: [ transformer.before ],
-		after: [ transformer.after ]
+		after: [ transformer.after ],
 	})
 });
 

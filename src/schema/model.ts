@@ -34,25 +34,26 @@ export interface ModelBaseNode{
 	jsDoc:		string | undefined
 }
 
+/** Nodes with childs */
+export interface ModelNodeWithChilds extends ModelBaseNode{
+	children:	ModelNode[]
+}
+
 /** Object node */
-export interface ModelObjectNode extends ModelBaseNode{
+export interface ModelObjectNode extends ModelNodeWithChilds{
 	kind:		ModelKind.PLAIN_OBJECT
-	fields:		(ObjectField|ModelMethod)[]
-	fieldMap:	Record<string, ObjectField|ModelMethod>
+	mapChilds:	Record<string, ObjectField|ModelMethod>
 	isClass:	boolean
 }
 
 /** List kinds */
-export interface ModelListNode extends ModelBaseNode{
+export interface ModelListNode extends ModelNodeWithChilds{
 	kind:		ModelKind.LIST
-	value:		ModelNode|undefined
 }
 
 /** Union of multiple kinds */
-export interface ModelUnionNode extends ModelBaseNode{
+export interface ModelUnionNode extends ModelNodeWithChilds{
 	kind:		ModelKind.UNION
-	/** Reference name */
-	items:		ModelNode[]
 }
 
 /** Reference */
@@ -63,34 +64,34 @@ export interface ModelRefNode extends ModelBaseNode{
 }
 
 /** Object fields */
-export interface ObjectField extends ModelBaseNode{
+export interface ObjectField extends ModelNodeWithChilds{
 	kind: ModelKind.FIELD,
 	/** Is required */
 	required:	boolean
-	/** field value */
-	value:	ModelNode | undefined
 }
 
 export const MethodAttr= Symbol('method');
-/** Method */
+/**
+ * Method
+ * ::childs[0] arg type
+ * ::childs[1] result type
+ */
 export interface ModelMethod extends ModelBaseNode{
-	kind:			ModelKind.METHOD
-	value:			ModelNode | undefined,
-	argParam:		ModelNode | undefined,
-	[MethodAttr]:	ts.MethodDeclaration // method declaration
+	kind:	ModelKind.METHOD
+	method:	ts.MethodDeclaration // method declaration
+	children: [ModelNode|undefined, ModelNode|undefined]
 }
 
 
 /** Model base class */
 export interface RootModel{
-	models: ModelNode[]
-	map:	Record<string, ModelNode>
-	/** Model fx name */
-	modelFx: string|undefined
+	children:	ModelNode[],
+	mapChilds:	Record<string, ModelNode>
+	/** Name of "Model" factory function */
+	modelFx:	string|undefined
 }
 
 /** Param */
-export interface ModelParam extends ModelBaseNode{
+export interface ModelParam extends ModelNodeWithChilds{
 	kind:	ModelKind.PARAM
-	value:	ModelNode|undefined
 }
