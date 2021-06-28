@@ -1,7 +1,10 @@
-import { ModelKind, RootModel, ModelNode, ModelObjectNode, ObjectField, MethodAttr } from "@src/schema/model.js";
-import ts, { PropertySignature, updateFor } from "typescript";
+import { ModelKind, RootModel, ModelNode, ObjectField, MethodAttr } from "@src/schema/model.js";
+import ts, { PropertySignature } from "typescript";
 //@ts-ignore
 import treefy from 'treeify';
+
+//FIXME
+const PACKAGE_NAME= '"@src/index.js"';
 
 
 type TsClazzType = ts.ClassLikeDeclaration | ts.InterfaceDeclaration;
@@ -253,8 +256,7 @@ function _getImportedModelName(node: ts.ImportDeclaration): string | undefined {
 				strImport = child.getText();
 				break;
 			case ts.SyntaxKind.StringLiteral:
-				//FIXME change this to library name
-				if (child.getText() === '"@src/index.js"') {
+				if (child.getText() === PACKAGE_NAME) {
 					isModelImport = true;
 					break rtLoop;
 				}
@@ -278,7 +280,7 @@ function _addAst(root: RootModel, ctx: ts.TransformationContext) {
 						node as ts.NewExpression,
 						(node as ts.NewExpression).expression,
 						(node as ts.NewExpression).typeArguments,
-						[ctx.factory.createIdentifier(JSON.stringify(root))],
+						[_serializeAST(root, ctx)],
 					)
 				}
 				break;
@@ -286,4 +288,26 @@ function _addAst(root: RootModel, ctx: ts.TransformationContext) {
 		return ts.visitEachChild(node, vst, ctx);
 	}
 	return vst;
+}
+
+/** Serialize AST */
+function _serializeAST(root: RootModel, ctx: ts.TransformationContext): ts.Expression{
+	const factory= ctx.factory;
+	var fields:ts.Expression[]= []
+	const rootNode= factory.createObjectLiteralExpression([
+		//Models
+		factory.createPropertyAssignment(
+			factory.createIdentifier("models"),
+			factory.createArrayLiteralExpression( fields, false )
+		),
+	]);
+	const queue:ts.Expression[][]= [fields];
+	const nodeQueue= [root.models];
+	//-------
+	var i, len, node, prop, props= root.models;
+	for(i=0, len= queue.length; i<len; ++i){
+		prop= queue[i];
+	}
+	return rootNode;
+	//return ctx.factory.createIdentifier(JSON.stringify(root));
 }
