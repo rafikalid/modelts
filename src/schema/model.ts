@@ -1,5 +1,6 @@
 import { Model } from "@src/model/model";
 import ts from "typescript";
+import { JsonTypes } from "./types";
 
 /** Model kinds */
 export enum ModelKind{
@@ -7,6 +8,9 @@ export enum ModelKind{
 
 	/** Enumeration */
 	ENUM,
+
+	/** Enum member */
+	ENUM_MEMBER,
 
 	/** List of sub entries */
 	LIST,
@@ -24,11 +28,17 @@ export enum ModelKind{
 	METHOD,
 
 	/** PARAM */
-	PARAM
+	PARAM,
+
+	/** Const, used as values for ENUM */
+	CONST,
+
+	/** Scalar */
+	SCALAR
 }
 
 /** Model node */
-export type ModelNode= ModelObjectNode | ModelEnumNode | ModelListNode | ModelRefNode | ModelUnionNode | ObjectField | ModelMethod | ModelParam
+export type ModelNode= ModelObjectNode | ConstNode | ModelEnumNode | EnumMember | ModelListNode | ModelRefNode | ModelUnionNode | ObjectField | ModelMethod | ModelParam | ModelScalarNode<any>
 
 /** Model node AST */
 export interface ModelBaseNode{
@@ -36,6 +46,12 @@ export interface ModelBaseNode{
 	kind:		ModelKind
 	/** Comment */
 	jsDoc:		string | undefined
+}
+
+/** Const value */
+export interface ConstNode extends ModelBaseNode{
+	kind: ModelKind.CONST
+	value: string
 }
 
 /** Nodes with childs */
@@ -53,7 +69,7 @@ export interface ModelObjectNode extends ModelNodeWithChilds{
 /** Enum */
 export interface ModelEnumNode extends ModelNodeWithChilds{
 	kind:		ModelKind.ENUM,
-	mapChilds:	Record<string, ObjectField>
+	mapChilds:	Record<string, EnumMember>
 }
 
 /** List kinds */
@@ -76,6 +92,13 @@ export interface ModelRefNode extends ModelBaseNode{
 /** Object fields */
 export interface ObjectField extends ModelNodeWithChilds{
 	kind: ModelKind.FIELD,
+	/** Is required */
+	required:	boolean
+}
+
+/** Enum member */
+export interface EnumMember extends ModelNodeWithChilds{
+	kind: ModelKind.ENUM_MEMBER
 	/** Is required */
 	required:	boolean
 }
@@ -105,4 +128,13 @@ export interface RootModel{
 /** Param */
 export interface ModelParam extends ModelNodeWithChilds{
 	kind:	ModelKind.PARAM
+}
+
+/** Scalar node */
+export interface ModelScalarNode<T> extends ModelBaseNode{
+	kind:	ModelKind.SCALAR
+	/** Parse value */
+	parse: (value: JsonTypes)=> T
+	/** Stringify value */
+	serialize: (value: T)=> JsonTypes
 }

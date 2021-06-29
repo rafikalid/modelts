@@ -1,5 +1,6 @@
-import { Model, resolver } from "@src/index.js";
+import { Int, JsonTypes, Model, ModelScalar, resolver, UNION } from "@src/index.js";
 import { ResolversOf } from "@src/index.js";
+import { jsDocDirective } from "@src/schema/validation";
 
 /**
  * @tsmodel
@@ -61,6 +62,22 @@ export interface Booking{
 	name: string
 }
 
+/** User interface */
+export interface User{
+	id:		ID,
+	/**
+	 * User's name
+	 * @max 300, User's name mast be less than 100, got $value
+	 */
+	name:	string,
+	/**
+	 * User's age
+	 * @between 15 & 66, Expected value between 15 and 66
+	 * @has EDIT_STAFF, Missing permission Edit staff
+	 */
+	age:	Int
+}
+
 /**
  * @tsmodel
  * Enum
@@ -78,3 +95,43 @@ export enum roles{
 
 /** Model */
 export const model= new Model();
+
+/** type example */
+export type ObjectId= ``;
+
+/** Object id scalar */
+export const ObjectIdScalar: ModelScalar<ObjectId>= {
+	name: 'ObjectId',
+	parse(value: JsonTypes){
+		return value as ObjectId;
+	},
+	serialize(value){
+		return String(value);
+	}
+};
+
+/** Union */
+export const UnionExample: UNION<User|Booking>= {
+	name: 'UnionExample',
+	resolveType(value, info: any){
+		return 0;
+	}
+}
+
+/** Create jsDoc directive */
+const hasDirective: jsDocDirective= {
+	name:	'has',
+	resolve(txt: string, fieldType: string){
+		// parse text after directive
+		var parsed= txt.match(/^([A-Z_])(?:,(.+))?/);
+		// wrap resolver
+		return function wrapper(resolver: Function){
+			return async function(parent: any, arg: any, ctx: any, info: any){
+				// Do prefix checks
+				var r= await resolver(parent, arg, ctx, info);
+				// Do post checks
+				return r;
+			}
+		}
+	}
+};

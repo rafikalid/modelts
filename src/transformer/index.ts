@@ -142,7 +142,7 @@ function _visitor(ctx: ts.TransformationContext, sf: ts.SourceFile, root: RootMo
 					if (parentNode.kind!== ModelKind.ENUM)
 						throw new Error(`Expected parent node to ENUM, got ${ts.SyntaxKind[node.kind]} at ${node.getStart()}`);
 					currentNode = {
-						kind: ModelKind.FIELD,
+						kind: ModelKind.ENUM_MEMBER,
 						name: (node as PropertySignature).name.getText(),
 						jsDoc: undefined,
 						required: true,
@@ -151,10 +151,18 @@ function _visitor(ctx: ts.TransformationContext, sf: ts.SourceFile, root: RootMo
 					parentNode.children.push(currentNode);
 					parentNode.mapChilds[currentNode.name!] = currentNode;
 					var i, len, childs = node.getChildren();
-					console.log('----enum value: ', (node as ts.EnumMember).getLastToken()?.getText())
+					var child;
 					for (i = 0, len = childs.length; i < len; i++) {
-						console.log('--- ENUM child', ts.SyntaxKind[childs[i].kind],'::', childs[i].getText())
-						visitorCb(currentNode, childs[i]);
+						child= childs[i];
+						visitorCb(currentNode, child);
+						if(child.kind === ts.SyntaxKind.FirstAssignment){
+							currentNode.children.push({
+								kind:	ModelKind.CONST,
+								name:	undefined,
+								jsDoc:	undefined,
+								value:	childs[i+1].getText()
+							});
+						}
 					}
 					return node;
 				} else {
@@ -395,6 +403,11 @@ function _serializeAST(root: RootModel, ctx: ts.TransformationContext): ts.Expre
 					case ModelKind.REF:
 						nodeProperties.push(
 							factory.createPropertyAssignment(factory.createIdentifier("value"), factory.createStringLiteral(prop.value))
+						);
+						break;
+					case ModelKind.CONST:
+						nodeProperties.push(
+							factory.createPropertyAssignment(factory.createIdentifier("value"), factory.createIdentifier(prop.value))
 						);
 						break;
 				}
