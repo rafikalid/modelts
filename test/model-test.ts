@@ -1,6 +1,6 @@
 import { Int, JsonTypes, Model, ModelScalar, resolver, UNION } from "@src/index.js";
 import { ResolversOf } from "@src/index.js";
-import { jsDocDirective } from "@src/schema/validation";
+import { JsDocDirective } from "@src/schema/validation";
 
 /**
  * @tsmodel
@@ -62,18 +62,23 @@ export interface Booking{
 	name: string
 }
 
-/** User interface */
+/**
+ * User interface
+ * @tsmodel
+ */
 export interface User{
 	id:		ID,
 	/**
 	 * User's name
-	 * @max 300, User's name mast be less than 100, got $value
+	 * @max {300} - User's name mast be less than 100, got $value @min {2}, min possible value
+	 * @type {string} - string type
+	 * @deprecated use anyting instead :D
 	 */
 	name:	string,
 	/**
 	 * User's age
-	 * @between 15 & 66, Expected value between 15 and 66
-	 * @has EDIT_STAFF, Missing permission Edit staff
+	 * @between {15, 66} - Expected value between 15 and 66
+	 * @has {EDIT_STAFF} - Missing permission Edit staff
 	 */
 	age:	Int
 }
@@ -101,7 +106,6 @@ export type ObjectId= ``;
 
 /** Object id scalar */
 export const ObjectIdScalar: ModelScalar<ObjectId>= {
-	name: 'ObjectId',
 	parse(value: JsonTypes){
 		return value as ObjectId;
 	},
@@ -112,25 +116,29 @@ export const ObjectIdScalar: ModelScalar<ObjectId>= {
 
 /** Union */
 export const UnionExample: UNION<User|Booking>= {
-	name: 'UnionExample',
 	resolveType(value, info: any){
 		return 0;
 	}
 }
 
 /** Create jsDoc directive */
-const hasDirective: jsDocDirective= {
+const hasDirective: JsDocDirective<any, any>= {
 	name:	'has',
-	resolve(txt: string, fieldType: string){
-		// parse text after directive
-		var parsed= txt.match(/^([A-Z_])(?:,(.+))?/);
-		// wrap resolver
-		return function wrapper(resolver: Function){
-			return async function(parent: any, arg: any, ctx: any, info: any){
-				// Do prefix checks
-				var r= await resolver(parent, arg, ctx, info);
-				// Do post checks
-				return r;
+	resolver(txt: string, fieldType:string){
+		return {
+			input(parent: any, value: any, ctx: any, info: any){
+				console.log('--- Excec execute input pipeline');
+				return value;
+			},
+			output(resolver: Function){
+				return async function(parent: any, arg: any, ctx: any, info: any){
+					console.log('---- Prefix check');
+					// Do prefix checks
+					var r= await resolver(parent, arg, ctx, info);
+					// Do post checks
+					console.log('--- postfix check');
+					return r;
+				}
 			}
 		}
 	}

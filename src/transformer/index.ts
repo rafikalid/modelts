@@ -18,7 +18,7 @@ export function createTransformer() {
 		/** Before */
 		before(ctx: ts.TransformationContext): ts.Transformer<ts.SourceFile> {
 			return function (sf: ts.SourceFile) {
-				console.log('-----FILE: ', sf.fileName)
+				console.log('FILE>>: ', sf.fileName)
 				// Prepare root node
 				const root: RootModel = {
 					mapChilds:	{},
@@ -33,7 +33,7 @@ export function createTransformer() {
 		/** After */
 		after(ctx: ts.TransformationContext): ts.Transformer<ts.SourceFile> {
 			return function (sf: ts.SourceFile) {
-				console.log('-----AFTER>> FILE: ', sf.fileName)
+				console.log('AFTER FILE>>: ', sf.fileName)
 				function visitorCb(node: ts.Node): ts.VisitResult<ts.Node> {
 					var fileName = sf.fileName;
 					var t = mapRoots.get(fileName);
@@ -67,7 +67,7 @@ function _visitor(ctx: ts.TransformationContext, sf: ts.SourceFile, root: RootMo
 		var currentNode: ModelNode | undefined;
 		switch (node.kind) {
 			case ts.SyntaxKind.ImportDeclaration:
-				root.modelFx ??= _getImportedModelName(node as ts.ImportDeclaration);
+				_parseModelImportTags(node as ts.ImportDeclaration, root);
 				break;
 			case ts.SyntaxKind.InterfaceDeclaration:
 			case ts.SyntaxKind.ClassDeclaration:
@@ -77,6 +77,7 @@ function _visitor(ctx: ts.TransformationContext, sf: ts.SourceFile, root: RootMo
 						name:		(node as TsClazzType).name?.getText(),
 						kind:		ModelKind.PLAIN_OBJECT,
 						jsDoc:		undefined,
+						directives:	undefined,
 						children:	[],
 						mapChilds:	{},
 						isClass:	node.kind === ts.SyntaxKind.ClassDeclaration
@@ -96,6 +97,7 @@ function _visitor(ctx: ts.TransformationContext, sf: ts.SourceFile, root: RootMo
 						name:		(node as ts.EnumDeclaration).name?.getText(),
 						kind:		ModelKind.ENUM,
 						jsDoc:		undefined,
+						directives:	undefined,
 						children:	[],
 						mapChilds:	{}
 					};
@@ -109,8 +111,8 @@ function _visitor(ctx: ts.TransformationContext, sf: ts.SourceFile, root: RootMo
 				}
 				break;
 			case ts.SyntaxKind.TypeAliasDeclaration:
-				console.log('----------------------------------------->> TYPE: ')
 				if (_isTsModel(node)) {
+					console.log('----------------------------------------->> TYPE: ')
 					// console.log(node.getFullText());
 				}
 				break;
@@ -123,6 +125,7 @@ function _visitor(ctx: ts.TransformationContext, sf: ts.SourceFile, root: RootMo
 						kind: ModelKind.FIELD,
 						name: (node as PropertySignature).name.getText(),
 						jsDoc: undefined,
+						directives:	undefined,
 						required: true,
 						children: []
 					};
@@ -145,6 +148,7 @@ function _visitor(ctx: ts.TransformationContext, sf: ts.SourceFile, root: RootMo
 						kind: ModelKind.ENUM_MEMBER,
 						name: (node as PropertySignature).name.getText(),
 						jsDoc: undefined,
+						directives:	undefined,
 						required: true,
 						children: []
 					};
@@ -160,6 +164,7 @@ function _visitor(ctx: ts.TransformationContext, sf: ts.SourceFile, root: RootMo
 								kind:	ModelKind.CONST,
 								name:	undefined,
 								jsDoc:	undefined,
+								directives:	undefined,
 								value:	childs[i+1].getText()
 							});
 						}
@@ -177,7 +182,18 @@ function _visitor(ctx: ts.TransformationContext, sf: ts.SourceFile, root: RootMo
 				break;
 			case ts.SyntaxKind.JSDocComment:
 				if (parentNode) {
+					// Save jsDoc
 					parentNode.jsDoc = node.getText().replace(/^\s*\*|^\s*\/\*\*|\s*\*\/\s*$/gm, '');
+					// Check for jsDoc directives
+					let i, len, child, childs= node.getChildren();
+					for(i=0, len=childs.length; i<len; ++i){
+						child= childs[i];
+						let directiveToken= child.getFirstToken();
+						if(directiveToken){
+							let directiveName= directiveToken.getText()!;
+							(parentNode.directives??= []).push(directiveName, child.getText().substr(directiveName.length+2));
+						}
+					}
 				}
 				break;
 			case ts.SyntaxKind.TypeReference:
@@ -198,6 +214,7 @@ function _visitor(ctx: ts.TransformationContext, sf: ts.SourceFile, root: RootMo
 								kind: ModelKind.REF,
 								name: undefined,
 								jsDoc: undefined,
+								directives:	undefined,
 								value: node.getText()
 							}
 							break;
@@ -212,6 +229,7 @@ function _visitor(ctx: ts.TransformationContext, sf: ts.SourceFile, root: RootMo
 					kind:	ModelKind.LIST,
 					name:	undefined,
 					jsDoc:	undefined,
+					directives:	undefined,
 					children: []
 				}
 				if (parentNode) {
@@ -240,6 +258,7 @@ function _visitor(ctx: ts.TransformationContext, sf: ts.SourceFile, root: RootMo
 						kind:		ModelKind.METHOD,
 						name:		methodName,
 						jsDoc:		undefined,
+						directives:	undefined,
 						// method:		node as ts.MethodDeclaration,
 						method: `${parentNode.name}.prototype.${methodName}`,
 						/** [ResultType, ParamType] */
@@ -268,10 +287,15 @@ function _visitor(ctx: ts.TransformationContext, sf: ts.SourceFile, root: RootMo
 						kind: ModelKind.PARAM,
 						name: (node as ts.ParameterDeclaration).name.getText(),
 						jsDoc: undefined,
+						directives:	undefined,
 						children: []
 					};
 					parentNode.children[1] = currentNode;
 				}
+				break;
+			/** Variable statement: create new scalar, union, ... */
+			case ts.SyntaxKind.VariableDeclaration:
+				_parseModelDirective(node as ts.VariableDeclaration, root);
 				break;
 			// default:
 			// 	console.log(`${ts.SyntaxKind[node.kind]}: ${node.getFullText()}`)
@@ -291,14 +315,14 @@ function _isTsModel(node: ts.Node): boolean {
 		if (ts.isJSDoc(childNode)) {
 			var childNodes = childNode.getChildren();
 			for (let j = 0, jLen = childNodes.length; j < jLen; j++) {
-				if (childNodes[j].getFullText().includes('@tsmodel')) { return true }
+				if (/^@tsmodel\b/.test(childNodes[j].getText())) { return true }
 			}
 		}
 	}
 	return false;
 }
 
-function _getImportedModelName(node: ts.ImportDeclaration): string | undefined {
+function _parseModelImportTags(node: ts.ImportDeclaration, root: RootModel){
 	var i, len, childs = node.getChildren(), child;
 	var isModelImport = false;
 	var strImport;
@@ -317,8 +341,15 @@ function _getImportedModelName(node: ts.ImportDeclaration): string | undefined {
 		}
 	}
 	var m;
-	if (isModelImport && strImport && (m = strImport.match(/\bModel\b(?: as (\w+))?/))) {
-		return m[1] || m[0];
+	if (isModelImport && strImport) {
+		if(m = strImport.match(/\bModel\b(?: as (\w+))?/))
+			root.modelFx= m[1] || m[0];
+		else if(m= strImport.match(/\bModelScalar\b(?: as (\w+))?/))
+			root._importScalar= m[1] || m[0];
+		else if(m= strImport.match(/\bUNION\b(?: as (\w+))?/))
+			root._importUnion= m[1] || m[0];
+		else if(m= strImport.match(/\bJsDocDirective\b(?: as (\w+))?/))
+			root._importDirective= m[1] || m[0];
 	}
 }
 
@@ -366,7 +397,13 @@ function _serializeAST(root: RootModel, ctx: ts.TransformationContext): ts.Expre
 				var nodeProperties: ts.ObjectLiteralElementLike[]= [
 					factory.createPropertyAssignment( factory.createIdentifier("name"), prop.name==null? factory.createIdentifier("undefined") : factory.createStringLiteral(prop.name)),
 					factory.createPropertyAssignment( factory.createIdentifier("kind"), factory.createNumericLiteral(prop.kind)),
-					factory.createPropertyAssignment( factory.createIdentifier("jsDoc"), prop.jsDoc==null? factory.createIdentifier("undefined") : factory.createStringLiteral(prop.jsDoc))
+					factory.createPropertyAssignment( factory.createIdentifier("jsDoc"), prop.jsDoc==null? factory.createIdentifier("undefined") : factory.createStringLiteral(prop.jsDoc)),
+					factory.createPropertyAssignment(
+						factory.createIdentifier("directives"),
+						prop.directives==null?
+							factory.createIdentifier("undefined")
+							: factory.createArrayLiteralExpression(prop.directives.map(l=> factory.createStringLiteral(l)), true)
+					)
 				];
 				switch(prop.kind){
 					case ModelKind.PLAIN_OBJECT:
@@ -437,4 +474,53 @@ function _serializeAST(root: RootModel, ctx: ts.TransformationContext): ts.Expre
 		),
 	]);
 	//return ctx.factory.createIdentifier(JSON.stringify(root));
+}
+
+/** Create Scalar, union or jsDoc directive */
+function _parseModelDirective(node: ts.VariableDeclaration, root: RootModel) {
+	var i, len, child, childs= node.getChildren();
+	var typeReference;
+	var scalarName: string;
+	for(i=0, len=childs.length; i<len; ++i){
+		child= childs[i];
+		switch(child.kind){
+			/** Parse type */
+			case ts.SyntaxKind.TypeReference:
+				typeReference= child.getFirstToken()!.getText();
+				break;
+			/** Literal object */
+			case ts.SyntaxKind.ObjectLiteralExpression:
+				switch(typeReference){
+					case root._importScalar:
+						scalarName= child.getLastToken()!.getText();
+						if(root.mapChilds[scalarName])
+							throw new Error(`Already defined entity ${scalarName} at ${child.getText()}: ${child.getStart()}`);
+						root.children.push(root.mapChilds[scalarName]={
+							kind:		ModelKind.SCALAR,
+							name:		scalarName,
+							jsDoc:		undefined,
+							directives:	undefined,
+							parser:		node.name.getText()
+						});
+						break;
+					case root._importUnion:
+						scalarName= node.name.getText();
+						if(root.mapChilds[scalarName])
+							throw new Error(`Already defined entity ${scalarName} at ${node.getText()}: ${node.getStart()}`);
+						//FIXME parse union types
+						root.children.push(root.mapChilds[scalarName]={
+							kind:			ModelKind.UNION,
+							name:			scalarName,
+							jsDoc:			undefined,
+							directives:		undefined,
+							resolveType:	node.name.getText()
+						});
+						break;
+					case root._importDirective:
+						
+						break;
+				}
+				return;
+		}
+	}
 }

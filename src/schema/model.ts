@@ -46,6 +46,8 @@ export interface ModelBaseNode{
 	kind:		ModelKind
 	/** Comment */
 	jsDoc:		string | undefined
+	/** jsDoc directives */
+	directives:	string[] | undefined
 }
 
 /** Const value */
@@ -78,8 +80,9 @@ export interface ModelListNode extends ModelNodeWithChilds{
 }
 
 /** Union of multiple kinds */
-export interface ModelUnionNode extends ModelNodeWithChilds{
+export interface ModelUnionNode extends ModelBaseNode{
 	kind:		ModelKind.UNION
+	resolveType:	string
 }
 
 /** Reference */
@@ -123,6 +126,12 @@ export interface RootModel{
 	mapChilds:	Record<string, ModelNode>
 	/** Name of "Model" factory function */
 	modelFx:	string|undefined
+	/** Name of "ModelScalar" */
+	_importScalar?: string|undefined
+	/** Name of "UNION" */
+	_importUnion?: string|undefined
+	/** Name of "JsDocDirective" */
+	_importDirective?: string|undefined
 }
 
 /** Param */
@@ -133,8 +142,5 @@ export interface ModelParam extends ModelNodeWithChilds{
 /** Scalar node */
 export interface ModelScalarNode<T> extends ModelBaseNode{
 	kind:	ModelKind.SCALAR
-	/** Parse value */
-	parse: (value: JsonTypes)=> T
-	/** Stringify value */
-	serialize: (value: T)=> JsonTypes
+	parser: string
 }
