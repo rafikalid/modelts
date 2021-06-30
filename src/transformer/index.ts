@@ -1,10 +1,12 @@
-import { ModelKind, RootModel, ModelNode, ObjectField, MethodAttr, ModelNodeWithChilds } from "@src/schema/model.js";
+import { Model } from "@src/model/model";
+import { ModelKind, RootModel, ModelNode, ObjectField, MethodAttr, ModelNodeWithChilds, ModelBaseNode } from "@src/schema/model.js";
 import ts, { PropertySignature } from "typescript";
-//@ts-ignore
-import treefy from 'treeify';
+// import treefy from 'treeify';
 
 //FIXME
 const PACKAGE_NAME= '"@src/index.js"';
+/** Model pretty output */
+const PRETTY= true;
 
 
 type TsClazzType = ts.ClassLikeDeclaration | ts.InterfaceDeclaration;
@@ -23,6 +25,7 @@ export function createTransformer() {
 				const root: RootModel = {
 					mapChilds:	{},
 					children:	[],
+					directives: {},
 					modelFx:	undefined
 				};
 				mapRoots.set(sf.fileName, root);
@@ -259,8 +262,8 @@ function _visitor(ctx: ts.TransformationContext, sf: ts.SourceFile, root: RootMo
 						name:		methodName,
 						jsDoc:		undefined,
 						directives:	undefined,
-						// method:		node as ts.MethodDeclaration,
-						method: `${parentNode.name}.prototype.${methodName}`,
+						method:		node as ts.MethodDeclaration,
+						// method: `${parentNode.name}.prototype.${methodName}`,
 						/** [ResultType, ParamType] */
 						children:	[undefined, undefined],
 					};
@@ -344,11 +347,11 @@ function _parseModelImportTags(node: ts.ImportDeclaration, root: RootModel){
 	if (isModelImport && strImport) {
 		if(m = strImport.match(/\bModel\b(?: as (\w+))?/))
 			root.modelFx= m[1] || m[0];
-		else if(m= strImport.match(/\bModelScalar\b(?: as (\w+))?/))
+		if(m= strImport.match(/\bModelScalar\b(?: as (\w+))?/))
 			root._importScalar= m[1] || m[0];
-		else if(m= strImport.match(/\bUNION\b(?: as (\w+))?/))
+		if(m= strImport.match(/\bUNION\b(?: as (\w+))?/))
 			root._importUnion= m[1] || m[0];
-		else if(m= strImport.match(/\bJsDocDirective\b(?: as (\w+))?/))
+		if(m= strImport.match(/\bJsDocDirective\b(?: as (\w+))?/))
 			root._importDirective= m[1] || m[0];
 	}
 }
@@ -402,7 +405,7 @@ function _serializeAST(root: RootModel, ctx: ts.TransformationContext): ts.Expre
 						factory.createIdentifier("directives"),
 						prop.directives==null?
 							factory.createIdentifier("undefined")
-							: factory.createArrayLiteralExpression(prop.directives.map(l=> factory.createStringLiteral(l)), true)
+							: factory.createArrayLiteralExpression(prop.directives.map(l=> factory.createStringLiteral(l)), PRETTY)
 					)
 				];
 				switch(prop.kind){
@@ -417,25 +420,26 @@ function _serializeAST(root: RootModel, ctx: ts.TransformationContext): ts.Expre
 						);
 						break;
 					case ModelKind.METHOD:
-						nodeProperties.push(
-							factory.createPropertyAssignment(
-								factory.createIdentifier("method"),
-								factory.createIdentifier(prop.method)
-							)
-						);
 						// nodeProperties.push(
-						// 	factory.createMethodDeclaration(
-						// 		undefined, //method.decorators,
-						// 		undefined, //method.modifiers,
-						// 		method.asteriskToken,
-						// 		factory.createIdentifier('method'),
-						// 		method.questionToken,
-						// 		undefined, //method.typeParameters,
-						// 		method.parameters,
-						// 		undefined, //method.type,
-						// 		method.body
+						// 	factory.createPropertyAssignment(
+						// 		factory.createIdentifier("method"),
+						// 		factory.createIdentifier(prop.method)
 						// 	)
 						// );
+						var method= prop.method;
+						nodeProperties.push(
+							factory.createMethodDeclaration(
+								undefined, //method.decorators,
+								undefined, //method.modifiers,
+								undefined,
+								factory.createIdentifier('method'),
+								undefined,
+								undefined,
+								method.parameters,
+								undefined,
+								method.body
+							)
+						);
 						break;
 					case ModelKind.REF:
 						nodeProperties.push(
@@ -447,6 +451,16 @@ function _serializeAST(root: RootModel, ctx: ts.TransformationContext): ts.Expre
 							factory.createPropertyAssignment(factory.createIdentifier("value"), factory.createIdentifier(prop.value))
 						);
 						break;
+					case ModelKind.SCALAR:
+						nodeProperties.push(
+							factory.createPropertyAssignment(factory.createIdentifier("parser"), prop.parser)
+						);
+						break;
+					case ModelKind.UNION:
+						nodeProperties.push(
+							factory.createPropertyAssignment(factory.createIdentifier("resolveType"), prop.resolveType)
+						);
+						break;
 				}
 				// Add children
 				if((prop as ModelNodeWithChilds).children){
@@ -454,25 +468,47 @@ function _serializeAST(root: RootModel, ctx: ts.TransformationContext): ts.Expre
 					nodeProperties.push(
 						factory.createPropertyAssignment(
 							factory.createIdentifier("children"),
-							factory.createArrayLiteralExpression( fields, true )
+							factory.createArrayLiteralExpression( fields, PRETTY )
 						)
 					);
 					queue.push((prop as ModelNodeWithChilds).children);
 					results.push(fields);
 				}
 				// Add to parent
-				fieldNodes.push(factory.createObjectLiteralExpression(nodeProperties));
+				fieldNodes.push(factory.createObjectLiteralExpression(nodeProperties, PRETTY));
 			} else {
 				fieldNodes.push(factory.createIdentifier('undefined'));
 			}
 	}
+	//* Directives
+	const directiveFields=[];
+	const directives= root.directives;
+	for(let k in directives) if(typeof k === 'string' && directives.hasOwnProperty(k)){
+		prop= directives[k];
+		directiveFields.push(factory.createPropertyAssignment(
+			factory.createIdentifier(k),
+			factory.createObjectLiteralExpression([
+				factory.createPropertyAssignment( factory.createIdentifier("name"), factory.createStringLiteral(prop.name!)),
+				factory.createPropertyAssignment( factory.createIdentifier("kind"), factory.createNumericLiteral(prop.kind)),
+				factory.createPropertyAssignment( factory.createIdentifier("jsDoc"), prop.jsDoc==null? factory.createIdentifier("undefined") : factory.createStringLiteral(prop.jsDoc)),
+				factory.createPropertyAssignment( factory.createIdentifier("directives"), factory.createIdentifier("undefined")),
+				factory.createPropertyAssignment( factory.createIdentifier("resolver"), prop.resolver)
+			], PRETTY)
+		));
+	}
+	//* RETURN
 	return factory.createObjectLiteralExpression([
 		//Models
 		factory.createPropertyAssignment(
 			factory.createIdentifier("children"),
-			factory.createArrayLiteralExpression( results[0], true )
+			factory.createArrayLiteralExpression( results[0], PRETTY )
 		),
-	]);
+		// directives
+		factory.createPropertyAssignment(
+			factory.createIdentifier("directives"),
+			factory.createObjectLiteralExpression(directiveFields, PRETTY)
+		)
+	], PRETTY);
 	//return ctx.factory.createIdentifier(JSON.stringify(root));
 }
 
@@ -480,45 +516,82 @@ function _serializeAST(root: RootModel, ctx: ts.TransformationContext): ts.Expre
 function _parseModelDirective(node: ts.VariableDeclaration, root: RootModel) {
 	var i, len, child, childs= node.getChildren();
 	var typeReference;
-	var scalarName: string;
+	var syntaxList: ts.SyntaxList|undefined;
 	for(i=0, len=childs.length; i<len; ++i){
 		child= childs[i];
 		switch(child.kind){
 			/** Parse type */
 			case ts.SyntaxKind.TypeReference:
 				typeReference= child.getFirstToken()!.getText();
+				syntaxList= child.getChildren().find(e=>e.kind===ts.SyntaxKind.SyntaxList) as ts.SyntaxList|undefined;
 				break;
 			/** Literal object */
 			case ts.SyntaxKind.ObjectLiteralExpression:
+				var element: ModelBaseNode;
+				var nodeName:string;
 				switch(typeReference){
 					case root._importScalar:
-						scalarName= child.getLastToken()!.getText();
-						if(root.mapChilds[scalarName])
-							throw new Error(`Already defined entity ${scalarName} at ${child.getText()}: ${child.getStart()}`);
-						root.children.push(root.mapChilds[scalarName]={
+						// new scalar
+						if(!syntaxList)
+							throw new Error(`Expected generic type at: ${node.getText()}:${node.getStart()}`);
+						nodeName= syntaxList.getText();
+						if(!/^[a-z_]+$/i.test(nodeName))
+							throw new Error(`Enexprected scalar name: "${nodeName}" at ${node.getText()}:${node.getStart()}`);
+						if(root.mapChilds[nodeName])
+							throw new Error(`Already defined entity ${nodeName} at ${child.getText()}: ${child.getStart()}`);
+						root.children.push(element= root.mapChilds[nodeName]={
 							kind:		ModelKind.SCALAR,
-							name:		scalarName,
+							name:		nodeName,
 							jsDoc:		undefined,
 							directives:	undefined,
-							parser:		node.name.getText()
+							parser:		child as ts.ObjectLiteralExpression
 						});
 						break;
 					case root._importUnion:
-						scalarName= node.name.getText();
-						if(root.mapChilds[scalarName])
-							throw new Error(`Already defined entity ${scalarName} at ${node.getText()}: ${node.getStart()}`);
+						// Unions
+						nodeName= node.name.getText();
+						if(root.mapChilds[nodeName])
+							throw new Error(`Already defined entity ${nodeName} at ${node.getText()}: ${node.getStart()}`);
 						//FIXME parse union types
-						root.children.push(root.mapChilds[scalarName]={
+						root.children.push(element= root.mapChilds[nodeName]={
 							kind:			ModelKind.UNION,
-							name:			scalarName,
+							name:			nodeName,
 							jsDoc:			undefined,
 							directives:		undefined,
-							resolveType:	node.name.getText()
+							resolveType:	child as ts.ObjectLiteralExpression
 						});
 						break;
 					case root._importDirective:
-						
+						// jsDoc Directive
+						nodeName= node.name.getText();
+						var directives= root.directives;
+						if(directives[nodeName])
+							throw new Error(`Duplicate jsDoc directive: ${nodeName} at ${node.getText()} : ${node.getStart()}`);
+						element= directives[nodeName]= {
+							kind:	ModelKind.DIRECTIVE,
+							name:	nodeName,
+							jsDoc:	undefined,
+							directives: undefined,
+							resolver: child as ts.ObjectLiteralExpression
+						};
 						break;
+					default:
+						return;
+				}
+				// get parent as VariableStatement
+				var parent: ts.Node= node;
+				while(parent && parent.kind !== ts.SyntaxKind.VariableStatement){
+					parent= parent.parent;
+				}
+				// Add jsDoc
+				if(parent){
+					parent.getChildren()
+					for(let i=0, childs= parent.getChildren(), len= childs.length; i<len; ++i){
+						if(childs[i].kind=== ts.SyntaxKind.JSDocComment){
+							element.jsDoc= childs[i].getText().replace(/^\s*\*|^\s*\/\*\*|\s*\*\/\s*$/gm, '');
+							break;
+						}
+					}
 				}
 				return;
 		}

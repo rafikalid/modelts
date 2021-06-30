@@ -1,6 +1,4 @@
-import { Int, JsonTypes, Model, ModelScalar, resolver, UNION } from "@src/index.js";
-import { ResolversOf } from "@src/index.js";
-import { JsDocDirective } from "@src/schema/validation";
+import { Int, JsonTypes, Model, ModelScalar, resolver, UNION, ResolversOf, JsDocDirective } from "@src/index.js";
 
 /**
  * @tsmodel
@@ -49,7 +47,8 @@ export class UserResolvers implements ResolversOf<UserModel>{
 	/** a message */
 	@resolver
 	message(parent: any, args: Booking, context: any, infos: any): string{
-		return 'hello'
+		var s: string= 'hello';
+		return s;
 	}
 }
 
@@ -70,15 +69,16 @@ export interface User{
 	id:		ID,
 	/**
 	 * User's name
-	 * @max {300} - User's name mast be less than 100, got $value @min {2}, min possible value
+	 * @assert {max 20 min 17} - Expected value between 20 and 17
+	 * @assert {lt 17 gt 58} - Expected between 17 and 58
 	 * @type {string} - string type
 	 * @deprecated use anyting instead :D
 	 */
 	name:	string,
 	/**
 	 * User's age
-	 * @between {15, 66} - Expected value between 15 and 66
-	 * @has {EDIT_STAFF} - Missing permission Edit staff
+	 * @assert {between 15 & 66} - Expected value between 15 and 66
+	 * @has {EDIT_STAFF} - Excepected permission Edit staff
 	 */
 	age:	Int
 }
@@ -117,13 +117,13 @@ export const ObjectIdScalar: ModelScalar<ObjectId>= {
 /** Union */
 export const UnionExample: UNION<User|Booking>= {
 	resolveType(value, info: any){
-		return 0;
+		var s: number= 1522
+		return s;
 	}
 }
 
 /** Create jsDoc directive */
-const hasDirective: JsDocDirective<any, any>= {
-	name:	'has',
+const has: JsDocDirective<any, any>= {
 	resolver(txt: string, fieldType:string){
 		return {
 			input(parent: any, value: any, ctx: any, info: any){

@@ -34,7 +34,10 @@ export enum ModelKind{
 	CONST,
 
 	/** Scalar */
-	SCALAR
+	SCALAR,
+
+	/** jsDoc directive */
+	DIRECTIVE
 }
 
 /** Model node */
@@ -82,7 +85,7 @@ export interface ModelListNode extends ModelNodeWithChilds{
 /** Union of multiple kinds */
 export interface ModelUnionNode extends ModelBaseNode{
 	kind:		ModelKind.UNION
-	resolveType:	string
+	resolveType:	ts.ObjectLiteralExpression
 }
 
 /** Reference */
@@ -114,9 +117,15 @@ export const MethodAttr= Symbol('method');
  */
 export interface ModelMethod extends ModelBaseNode{
 	kind:	ModelKind.METHOD
-	// method:	ts.MethodDeclaration // method declaration
-	method: string,
+	method:	ts.MethodDeclaration // method declaration
+	// method: string,
 	children: [ModelNode|undefined, ModelNode|undefined]
+}
+
+/** jsDoc directive */
+export interface ModelJsDocDirective extends ModelBaseNode{
+	kind:		ModelKind.DIRECTIVE
+	resolver:	ts.ObjectLiteralExpression
 }
 
 
@@ -124,6 +133,8 @@ export interface ModelMethod extends ModelBaseNode{
 export interface RootModel{
 	children:	ModelNode[],
 	mapChilds:	Record<string, ModelNode>
+	/** jsDoc custom directives  */
+	directives: Record<string, ModelJsDocDirective>
 	/** Name of "Model" factory function */
 	modelFx:	string|undefined
 	/** Name of "ModelScalar" */
@@ -142,5 +153,5 @@ export interface ModelParam extends ModelNodeWithChilds{
 /** Scalar node */
 export interface ModelScalarNode<T> extends ModelBaseNode{
 	kind:	ModelKind.SCALAR
-	parser: string
+	parser: ts.ObjectLiteralExpression
 }

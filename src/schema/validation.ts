@@ -3,8 +3,6 @@ export type JsDocDirectiveCb<Tcontext, Tinfo>= (parent: any, value:any, ctx?: Tc
 
 /** Validation using jsDoc annotations */
 export interface JsDocDirective<Tcontext, Tinfo>{
-	/** Directive's name */
-	name: string
 	/** Resolver methods */
 	resolver: (txt: string, fieldType:string) => {
 		/** Input pipeline */
