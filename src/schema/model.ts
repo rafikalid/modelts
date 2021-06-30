@@ -41,7 +41,7 @@ export enum ModelKind{
 }
 
 /** Model node */
-export type ModelNode= ModelObjectNode | ConstNode | ModelEnumNode | EnumMember | ModelListNode | ModelRefNode | ModelUnionNode | ObjectField | ModelMethod | ModelParam | ModelScalarNode<any>
+export type ModelNode= ModelObjectNode | ConstNode | ModelEnumNode | EnumMember | ModelListNode | ModelRefNode | ModelUnionNode | ObjectField | ModelMethod | ModelParam | ModelScalarNode<any> | ModelJsDocDirective
 
 /** Model node AST */
 export interface ModelBaseNode{
@@ -50,7 +50,7 @@ export interface ModelBaseNode{
 	/** Comment */
 	jsDoc:		string | undefined
 	/** jsDoc directives */
-	directives:	string[] | undefined
+	directives:	ts.Expression[] | undefined
 }
 
 /** Const value */
@@ -117,8 +117,8 @@ export const MethodAttr= Symbol('method');
  */
 export interface ModelMethod extends ModelBaseNode{
 	kind:	ModelKind.METHOD
-	method:	ts.MethodDeclaration // method declaration
-	// method: string,
+	// method:	ts.MethodDeclaration // method declaration
+	method: string,
 	children: [ModelNode|undefined, ModelNode|undefined]
 }
 
@@ -138,11 +138,17 @@ export interface RootModel{
 	/** Name of "Model" factory function */
 	modelFx:	string|undefined
 	/** Name of "ModelScalar" */
-	_importScalar?: string|undefined
+	_importScalar?: string
 	/** Name of "UNION" */
-	_importUnion?: string|undefined
+	_importUnion?: string
 	/** Name of "JsDocDirective" */
-	_importDirective?: string|undefined
+	_importDirective?: string
+	/** Resolver annotation */
+	_resolverAnnotation?: string
+	/** Assert annotation */
+	_assertAnnoation?: string
+	/** tsmodel */
+	_tsmodel?: string
 }
 
 /** Param */

@@ -69,15 +69,15 @@ export interface User{
 	id:		ID,
 	/**
 	 * User's name
-	 * @assert {max 20 min 17} - Expected value between 20 and 17
-	 * @assert {lt 17 gt 58} - Expected between 17 and 58
+	 * @assert {max: 20, min: 17} - Expected value between 20 and 17
+	 * @assert {lt: 17, gt: 58} - Expected between 17 and 58
 	 * @type {string} - string type
 	 * @deprecated use anyting instead :D
 	 */
 	name:	string,
 	/**
 	 * User's age
-	 * @assert {between 15 & 66} - Expected value between 15 and 66
+	 * @assert {gte: 66, lte: 88} - Expected value between 15 and 66
 	 * @has {EDIT_STAFF} - Excepected permission Edit staff
 	 */
 	age:	Int
