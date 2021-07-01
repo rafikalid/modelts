@@ -9,15 +9,10 @@ const {src, dest, lastRun}= Gulp;
 
 const isProd= process.argv.includes('--prod');
 
-const transformer= createTransformer();
-
 const TsProject = GulpTypescript.createProject('tsconfig.json', {
 	removeComments: isProd,
 	pretty: !isProd,
-	getCustomTransformers: ()=>({
-		before: [ transformer.before, transformer.after ],
-		after: [ transformer.afterAll ],
-	})
+	getCustomTransformers: (program?: ts.Program)=> createTransformer(program!)
 });
 
 export function compileTest(){

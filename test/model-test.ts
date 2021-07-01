@@ -1,4 +1,4 @@
-import { Int, JsonTypes, Model, ModelScalar, resolver, UNION, ResolversOf, JsDocDirective } from "@src/index.js";
+import { Int, JsonTypes, Model, ModelScalar, UNION, ResolversOf, JsDocDirective, assert, ignore } from "@src/index.js";
 
 /**
  * @tsmodel
@@ -38,17 +38,23 @@ export type ID= string;
 
 /** @tsmodel */
 export class UserResolvers implements ResolversOf<UserModel>{
+	private ignoreThisfield?: number= 5225;
 	/** Overriding booking comment */
-	@resolver
+	@assert({max:55})
 	Bookings(parent: any, args: string[], context: any, infos: any):void{
 		// this is a resolver
 	}
 
 	/** a message */
-	@resolver
 	message(parent: any, args: Booking, context: any, infos: any): string{
 		var s: string= 'hello';
 		return s;
+	}
+
+	/** Custom method */
+	@ignore
+	customMethod(){
+		return 'this is not a resolver!';
 	}
 }
 
@@ -80,7 +86,7 @@ export interface User{
 	 * @assert {gte: 66, lte: 88} - Expected value between 15 and 66
 	 * @has {EDIT_STAFF} - Excepected permission Edit staff
 	 */
-	age:	Int
+	age?:	Int
 }
 
 /**

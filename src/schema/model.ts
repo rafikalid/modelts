@@ -143,10 +143,10 @@ export interface RootModel{
 	_importUnion?: string
 	/** Name of "JsDocDirective" */
 	_importDirective?: string
-	/** Resolver annotation */
-	_resolverAnnotation?: string
+	/** Ignore annotation */
+	_ignoreAnnotation?: string
 	/** Assert annotation */
-	_assertAnnoation?: string
+	_assertAnnotation?: string
 	/** tsmodel */
 	_tsmodel?: string
 }
