@@ -103,10 +103,12 @@ export interface ObjectField extends ModelNodeWithChilds{
 }
 
 /** Enum member */
-export interface EnumMember extends ModelNodeWithChilds{
+export interface EnumMember extends ModelBaseNode{
 	kind: ModelKind.ENUM_MEMBER
 	/** Is required */
 	required:	boolean
+	/** value */
+	value: string | undefined
 }
 
 export const MethodAttr= Symbol('method');

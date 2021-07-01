@@ -4,73 +4,12 @@
 	
 	/** Visitor callback */
 	function visitorCb(parentNode: ModelNode | undefined, node: ts.Node): ts.VisitResult<ts.Node> {
-		// Check if ignore this field or resolver
-		if(root._ignoreAnnotation && (node.decorators || node.modifiers)){
-			let ignoreAnnotation= `@${root._ignoreAnnotation}`;
-			if(node.decorators?.some(e=>e.getText()===ignoreAnnotation)){
-				let decorators= node.decorators?.filter(e=> e.getText()===ignoreAnnotation);
-				if(ts.isClassDeclaration(node)){
-					factory.updateClassDeclaration( node, decorators, node.modifiers, node.name, node.typeParameters, node.heritageClauses, node.members );
-				} else if(ts.isMethodDeclaration(node)){
-					factory.updateMethodDeclaration(node, decorators, node.modifiers, node.asteriskToken, node.name, node.questionToken, node.typeParameters, node.parameters, node.type, node.body);
-				} else if(ts.isPropertyDeclaration(node)){
-					factory.updatePropertyDeclaration(node, decorators, node.modifiers, node.name, node.questionToken || node.exclamationToken, node.type, node.initializer);
-				} else {
-					throw new Error(`Enexpected kind: ${ts.SyntaxKind[node.kind]} at ${node.getText()}:${node.getStart()}`);
-				}
-				// Ignore this field
-				return node;
-			} else if(node.modifiers?.some(function(e){
-				var t= e.getText();
-				return t==='private' || t === 'protected';
-			})){
-				return node;
-			}
-		}
+		
 		// Classes & interfaces
 		var currentNode: ModelNode | undefined;
 		switch (node.kind) {
-			case ts.SyntaxKind.ImportDeclaration:
-				_parseModelImportTags(node as ts.ImportDeclaration, root);
-				break;
-			case ts.SyntaxKind.InterfaceDeclaration:
-			case ts.SyntaxKind.ClassDeclaration:
-				console.log('--------------------------------- <Class or interface> ----------------------------');
-				console.log('**', (node as ts.ClassDeclaration).name!.getText())
-				console.log('Count: ', node.getChildCount());
-				let nodeType= typeChecker.getTypeAtLocation(node);
-				console.log('--isClass', nodeType.isClass())
-				console.log('--isClass or interface',nodeType.isClassOrInterface())
-				console.log('--isIntersection', nodeType.isIntersection())
-				console.log('--isUnion', nodeType.isUnion())
-				let properties= nodeType.getProperties();
-				for(let p of properties){
-					console.log("\t>>", p.name, p.getDocumentationComment(typeChecker).map(e=> e.text))
-					console.log(p.getJsDocTags().map(e=> e.name + '>>'+e.text?.map(i=> i.text).join(',')))
-					console.log(p.getEscapedName)
-					console.log(p.valueDeclaration)
-				}
-				console.log('--------------------------------- </ Class or interface> ----------------------------');
-			case ts.SyntaxKind.TypeLiteral:
-				if (parentNode || _isTsModel(node, root)) {
-					currentNode = {
-						name:		(node as any).name?.getText(),
-						kind:		ModelKind.PLAIN_OBJECT,
-						jsDoc:		undefined,
-						directives:	undefined,
-						children:	[],
-						mapChilds:	{},
-						isClass:	node.kind === ts.SyntaxKind.ClassDeclaration
-					};
-					if (parentNode)
-						// Field
-						(parentNode as ObjectField).children.push(currentNode);
-					else
-						_addEntity(currentNode, node);
-				} else {
-					return node;
-				}
-				break;
+		
+		
 			case ts.SyntaxKind.EnumDeclaration:
 				if (_isTsModel(node, root)) {
 					currentNode = {

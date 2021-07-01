@@ -1,5 +1,5 @@
-import { ModelKind, RootModel, ModelNode, ObjectField, ModelNodeWithChilds, ModelBaseNode, ModelMethod } from "@src/schema/model.js";
-import ts, { ClassDeclaration } from "typescript";
+import { ModelKind, RootModel, ModelNode, ObjectField, ModelNodeWithChilds, ModelBaseNode } from "@src/schema/model.js";
+import ts from "typescript";
 // import treefy from 'treeify';
 
 //FIXME
@@ -133,8 +133,10 @@ function _visitor(program: ts.Program, ctx: ts.TransformationContext, sf: ts.Sou
 	/** Visite each node */
 	function _nodeVisitor(node: ts.Node, parentDescriptor: ModelNode|undefined, addVisiteNodes: VisiteEachNodeCb){
 		// get type
-		var nodeType, nodeSymbol: ts.Symbol | undefined, currentNode: ModelNode;
+		var currentNode: ModelNode;
 		var parseDirectives: ParseDirectivesReturn;
+		var nodeType = typeChecker.getTypeAtLocation(node);
+		var nodeSymbol = nodeType.getSymbol();
 		// Switch kind
 		switch(node.kind){
 			/** parse Imports */
@@ -152,8 +154,6 @@ function _visitor(program: ts.Program, ctx: ts.TransformationContext, sf: ts.Sou
 			/** Class && interfaces */
 			case ts.SyntaxKind.InterfaceDeclaration:
 			case ts.SyntaxKind.ClassDeclaration:
-				nodeType= typeChecker.getTypeAtLocation(node);
-				nodeSymbol= nodeType.getSymbol();
 				// jsDirectives
 				parseDirectives= _getDirectives(factory, typeChecker, importTokens, node, nodeSymbol);
 				if(!parseDirectives.ignore && (parseDirectives.tsModel || parentDescriptor)){
@@ -167,6 +167,9 @@ function _visitor(program: ts.Program, ctx: ts.TransformationContext, sf: ts.Sou
 						mapChilds:	{},
 						isClass:	nodeType.isClass()
 					};
+					// clear decorators
+					if(parseDirectives.directives)
+						_setDecoratorsAndModifiers(factory, node, undefined, node.modifiers);
 					// Parse each property
 					addVisiteNodes(nodeType.getProperties().map(s=> s.valueDeclaration), currentNode);
 					// Add entity
@@ -191,12 +194,84 @@ function _visitor(program: ts.Program, ctx: ts.TransformationContext, sf: ts.Sou
 					(parentDescriptor as ObjectField).children.push(currentNode);
 				}
 				break;
-			// /** */
-			// case ts.SyntaxKind:
-			// 	break;
-			// /** */
-			// case ts.SyntaxKind:
-			// 	break;
+			/** Enumeration */
+			case ts.SyntaxKind.EnumDeclaration:
+				// jsDirectives
+				parseDirectives = _getDirectives(factory, typeChecker, importTokens, node, nodeSymbol);
+				if (parseDirectives.tsModel && !parseDirectives.ignore){
+					// clear decorators
+					if (parseDirectives.directives)
+						_setDecoratorsAndModifiers(factory, node, undefined, node.modifiers);
+					// current node
+					currentNode = {
+						name:		(node as ts.EnumDeclaration).name?.getText(),
+						kind:		ModelKind.ENUM,
+						jsDoc:		parseDirectives.jsDoc,
+						directives:	parseDirectives.directives,
+						children:	[],
+						mapChilds:	{}
+					};
+					if(parentDescriptor)
+						(parentDescriptor as ObjectField).children.push(currentNode);
+					else
+						_addEntity(currentNode, node);
+					// Go through each child
+					addVisiteNodes(node.getChildren(), currentNode);
+				}
+				break;
+			/** Property signature */
+			case ts.SyntaxKind.PropertySignature:
+				if(parentDescriptor && !(parseDirectives = _getDirectives(factory, typeChecker, importTokens, node, nodeSymbol)).ignore){
+					if (parentDescriptor.kind !== ModelKind.PLAIN_OBJECT)
+						throw new Error(`Expected parent node to be interface or class, got ${ts.SyntaxKind[node.kind]} at ${node.getStart()}`);
+					// clear decorators
+					if (parseDirectives.directives)
+						_setDecoratorsAndModifiers(factory, node, undefined, node.modifiers);
+					// Current node
+					currentNode = {
+						kind:		ModelKind.FIELD,
+						name:		(node as ts.PropertySignature).name.getText(),
+						jsDoc:		parseDirectives.jsDoc,
+						directives:	parseDirectives.directives,
+						required:	!(node as ts.PropertySignature).questionToken,
+						children:	[]
+					};
+					// Add to parent
+					parentDescriptor.children.push(parentDescriptor.mapChilds[currentNode.name!] = currentNode);
+					// Go through childs
+					addVisiteNodes(node.getChildren(), currentNode);
+				}
+				break;
+			/** Enum member */
+			case ts.SyntaxKind.EnumMember:
+				if (parentDescriptor && !(parseDirectives = _getDirectives(factory, typeChecker, importTokens, node, nodeSymbol)).ignore) {
+					if (parentDescriptor.kind !== ModelKind.ENUM)
+						throw new Error(`Expected parent node to ENUM, got ${ts.SyntaxKind[node.kind]} at ${node.getStart()}`);
+					// Current node
+					currentNode = {
+						kind:		ModelKind.ENUM_MEMBER,
+						name:		(node as ts.PropertySignature).name.getText(),
+						jsDoc:		parseDirectives.jsDoc,
+						directives:	parseDirectives.directives,
+						required:	true,
+						value:		(function(){
+							var i, len, childs= node.getChildren();
+							for(i=0, len=childs.length; i<len; ++i){
+								if (childs[i].kind === ts.SyntaxKind.FirstAssignment){
+									return childs[i + 1].getText()
+								}
+							}
+						})()
+					};
+				}
+				break;
+			/** Type */
+			case ts.SyntaxKind.TypeAliasDeclaration:
+				parseDirectives = _getDirectives(factory, typeChecker, importTokens, node, nodeSymbol);
+				if (parseDirectives.tsModel && !parseDirectives.ignore) {
+					console.log('----------------------------------------->> TYPE: ');
+				}
+				break;
 			// /** */
 			// case ts.SyntaxKind:
 			// 	break;
@@ -286,8 +361,9 @@ function _astSerializeCommon(factory:ts.NodeFactory, prop: ModelNode){
 			);
 			break;
 		case ModelKind.CONST:
+		case ModelKind.ENUM_MEMBER:
 			nodeProperties.push(
-				factory.createPropertyAssignment(factory.createIdentifier("value"), factory.createIdentifier(prop.value))
+				factory.createPropertyAssignment(factory.createIdentifier("value"), factory.createIdentifier(prop.value ?? "undefined"))
 			);
 			break;
 		case ModelKind.SCALAR:
@@ -477,9 +553,6 @@ function _getDirectives(factory: ts.NodeFactory, typeChecker: ts.TypeChecker, im
 		}
 		if(jsDocArr.length)
 			result.jsDoc= jsDocArr.join("\n");
-		// remove decorators
-		if(node.decorators)
-			_setDecoratorsAndModifiers(factory, node, undefined, node.modifiers);
 	}catch(err){
 		if(err===0 || err===2){
 			// ignore using jsDoc or modifiers
