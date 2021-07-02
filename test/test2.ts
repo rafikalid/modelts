@@ -11,4 +11,4 @@ export interface UserProfile extends Partial<Omit<User, 'name'>>{
 	age: 855
 }
 
-export const test2Model= new Model();
+export const test2Model= new ccModel();

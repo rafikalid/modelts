@@ -59,17 +59,14 @@ export function createTransformer(program: ts.Program) {
 					assert:			'assert'
 				}
 			};
-			// Step 1: Generate AST
-			sf= ts.visitNode(sf, _astGenerate(program, ctx, sf, root));
-			// Step 2: Insert AST
-			sf= ts.visitNode(sf, _astVisitor(program, ctx, sf, root));
-			return sf;
+			// Visit node
+			return ts.visitNode(sf, _visitor(program, ctx, sf, root));
 		}
 	}
 }
 
 /** Visitor */
-function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts.SourceFile, root: RootModel): ts.Visitor {
+function _visitor(program: ts.Program, ctx: ts.TransformationContext, sf: ts.SourceFile, root: RootModel): ts.Visitor {
 	const factory= ctx.factory;
 	const typeChecker= program.getTypeChecker();
 	// Import tokens
@@ -78,8 +75,22 @@ function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts
 	return function(node: ts.Node){
 		// Step 1: compile tree
 		console.log('------<Step 1>-----')
-		visiteEachChild(node, _nodeVisitor);
+		node= visiteEachChild(node, _nodeVisitor);
 		console.log('------<Step 2>-----')
+		// Step 2: Add AST
+		const modelToken= root._tokens.Model;
+		if(root.children.length){
+			deepChildOfKind(node, ts.SyntaxKind.NewExpression, function(child: ts.NewExpression){
+				if (child.getChildAt(1).getText() === modelToken) {
+					// factory.updateNewExpression(child, child.expression, child.typeArguments, [_serializeAST(root, ctx)]);
+					console.log('--- update child node')
+					var el= factory.updateNewExpression(child, child.expression, child.typeArguments, [factory.createIdentifier('522451')]);
+					console.log('--- value: ', child.getText());
+					console.log('--- value: ', el===child)
+					console.log('--- value el: ', el.getFullText());
+				}
+			});
+		}
 		// Step 3: 
 		return node;
 	}
@@ -93,7 +104,6 @@ function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts
 			throw new Error(`Duplicated entity name: ${calzzName}`);
 		root.children.push(root.mapChilds[calzzName] = entity);
 	}
-	
 
 	/** Visite each node */
 	function _nodeVisitor(node: ts.Node, parentDescriptor: ModelNode|undefined, addVisiteNodes: VisiteEachNodeCb){
@@ -134,6 +144,9 @@ function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts
 						mapChilds:	{},
 						isClass:	nodeType.isClass()
 					};
+					// clear decorators
+					if(parseDirectives.directives)
+						_setDecoratorsAndModifiers(factory, node, undefined, node.modifiers);
 					// Parse each property
 					addVisiteNodes(nodeType.getProperties().map(s=> s.valueDeclaration), currentNode);
 					// Add entity
@@ -165,6 +178,9 @@ function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts
 				nodeSymbol = nodeType.getSymbol();
 				parseDirectives = _getDirectives(factory, typeChecker, importTokens, node, nodeSymbol);
 				if (parseDirectives.tsModel && !parseDirectives.ignore){
+					// clear decorators
+					if (parseDirectives.directives)
+						_setDecoratorsAndModifiers(factory, node, undefined, node.modifiers);
 					// current node
 					currentNode = {
 						name:		(node as ts.EnumDeclaration).name?.getText(),
@@ -189,6 +205,9 @@ function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts
 				if(parentDescriptor && !(parseDirectives = _getDirectives(factory, typeChecker, importTokens, node, nodeSymbol)).ignore){
 					if (parentDescriptor.kind !== ModelKind.PLAIN_OBJECT)
 						throw new Error(`Expected parent node to be interface or class, got ${ts.SyntaxKind[node.kind]} at ${node.getStart()}`);
+					// clear decorators
+					if (parseDirectives.directives)
+						_setDecoratorsAndModifiers(factory, node, undefined, node.modifiers);
 					// Current node
 					currentNode = {
 						kind:		ModelKind.FIELD,
@@ -300,6 +319,9 @@ function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts
 					if (parentDescriptor.kind !== ModelKind.PLAIN_OBJECT)
 						throw new Error(`Expected parent node to be interface or class, got ${ts.SyntaxKind[node.kind]} at ${node.getText()}: ${node.getStart()}`);
 					var methodName= (node as ts.MethodDeclaration).name.getText();
+					// clear decorators
+					if (parseDirectives.directives)
+						_setDecoratorsAndModifiers(factory, node, undefined, node.modifiers);
 					currentNode = {
 						kind:		ModelKind.METHOD,
 						name:		methodName,
@@ -347,61 +369,6 @@ function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts
 			default:
 				addVisiteNodes(node.getChildren(), undefined);
 		}
-	}
-}
-
-/** Insert AST */
-function _astVisitor(program: ts.Program, ctx: ts.TransformationContext, sf: ts.SourceFile, root: RootModel){
-	const factory= ctx.factory;
-	const typeChecker= program.getTypeChecker();
-	const importTokens= root._tokens;
-	const ignoreToken= `@${importTokens.ignore}`;
-	return function(node: ts.Node){
-		if(root.children.length)
-			node= ts.visitEachChild(node, _visitor, ctx);
-		return node;
-	}
-	/** Visitor */
-	function _visitor(node: ts.Node): ts.Node{
-		if(ts.isNewExpression(node)){
-			//* Model new Object
-			node= factory.createNewExpression(
-				node.expression,
-				node.typeArguments,
-				[_serializeAST(root, ctx)]
-			);
-		} else {
-			//* CLEAR DECORATORS
-			let kind= node.kind;
-			if(kind===ts.SyntaxKind.PropertyDeclaration || kind===ts.SyntaxKind.MethodDeclaration){
-				let nodeType = typeChecker.getTypeAtLocation(node);
-				let nodeSymbol = nodeType.getSymbol();
-				let parseDirectives= _getDirectives(factory, typeChecker, importTokens, node, nodeSymbol);
-				let decorators= undefined;
-				if(parseDirectives.ignore)
-					decorators= node.decorators?.filter(e=> e.getText()!==ignoreToken);
-				if(ts.isMethodDeclaration(node)){
-					node= factory.createMethodDeclaration(decorators, node.modifiers, node.asteriskToken, node.name, node.questionToken, node.typeParameters, node.parameters, node.type, node.body);
-				} else if(ts.isPropertyDeclaration(node)){
-					node= factory.createPropertyDeclaration(decorators, node.modifiers, node.name, node.questionToken || node.exclamationToken, node.type, node.initializer);
-				}
-				//* Visit each child
-				node= ts.visitEachChild(node, _visitor, ctx);
-			} else if(ts.isClassDeclaration(node)){
-				let nodeType = typeChecker.getTypeAtLocation(node);
-				let nodeSymbol = nodeType.getSymbol();
-				let parseDirectives= _getDirectives(factory, typeChecker, importTokens, node, nodeSymbol);
-				if(parseDirectives.tsModel){
-					node= factory.createClassDeclaration(undefined, node.modifiers, node.name, node.typeParameters, node.heritageClauses, node.members );
-					//* Visit each child
-					node= ts.visitEachChild(node, _visitor, ctx);
-				}
-			} else {
-				//* Visit each child
-				node= ts.visitEachChild(node, _visitor, ctx);
-			}
-		}
-		return node;
 	}
 }
 
@@ -575,7 +542,7 @@ function _getDirectives(factory: ts.NodeFactory, typeChecker: ts.TypeChecker, im
 	const result: ParseDirectivesReturn= {
 		ignore:		false,
 		tsModel:	false,
-		directives:	undefined,
+		directives:	directives,
 		jsDoc:		undefined
 	}
 	try{
@@ -643,15 +610,23 @@ function _getDirectives(factory: ts.NodeFactory, typeChecker: ts.TypeChecker, im
 		}
 		if(directives.length){
 			for(let e of directives)
-				jsDocArr.push(`@${e.getText()}`);
-			result.directives= directives;
+				jsDocArr.push(e.getText());
+		} else {
+			result.directives= undefined;
 		}
 		if(jsDocArr.length)
 			result.jsDoc= jsDocArr.join("\n");
 	}catch(err){
-		if(err===0 || err=== 1 || err===2){
-			// ignore using jsDoc, decorator or modifiers
+		if(err===0 || err===2){
+			// ignore using jsDoc or modifiers
 			result.ignore= true;
+			return result;
+		} else if(err===1){
+			// Remove "ignore" annotation
+			_setDecoratorsAndModifiers(factory, node, node.decorators?.filter(e=> e.getText()!==ignoreToken), node.modifiers);
+			// ignore using Annotation
+			result.ignore= true;
+			return result;
 		} else {
 			throw err;
 		}
@@ -659,6 +634,20 @@ function _getDirectives(factory: ts.NodeFactory, typeChecker: ts.TypeChecker, im
 	// Return
 	return result;
 }
+
+/** Update node decorators && modifiers */
+function _setDecoratorsAndModifiers(factory: ts.NodeFactory, node: ts.Node, decorators: ts.Decorator[] | undefined, modifiers: ts.ModifiersArray | undefined){
+	if(ts.isClassDeclaration(node)){
+		factory.updateClassDeclaration(node, decorators, modifiers, node.name, node.typeParameters, node.heritageClauses, node.members );
+	} else if(ts.isMethodDeclaration(node)){
+		factory.updateMethodDeclaration(node, decorators, modifiers, node.asteriskToken, node.name, node.questionToken, node.typeParameters, node.parameters, node.type, node.body);
+	} else if(ts.isPropertyDeclaration(node)){
+		factory.updatePropertyDeclaration(node, decorators, modifiers, node.name, node.questionToken || node.exclamationToken, node.type, node.initializer);
+	} else {
+		throw new Error(`Enexpected kind: ${ts.SyntaxKind[node.kind]} at ${node.getText()}:${node.getStart()}`);
+	}
+}
+
 /** Parse scalars, unions and directives */
 function _parseModelDirective(node: ts.VariableDeclaration, root: RootModel, parseDirectives: ParseDirectivesReturn) {
 	// Get type reference and syntax list

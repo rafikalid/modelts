@@ -131,26 +131,24 @@ export interface ModelJsDocDirective extends ModelBaseNode{
 }
 
 
+/** Import tokens */
+export interface ImportTokens{
+	tsmodel:		string
+	Model:			string
+	ModelScalar:	string
+	UNION:			string
+	ignore:			string
+	assert:			string
+};
+
 /** Model base class */
 export interface RootModel{
 	children:	ModelNode[],
 	mapChilds:	Record<string, ModelNode>
 	/** jsDoc custom directives  */
 	directives: Record<string, ModelJsDocDirective>
-	/** Name of "Model" factory function */
-	modelFx:	string|undefined
-	/** Name of "ModelScalar" */
-	_importScalar?: string
-	/** Name of "UNION" */
-	_importUnion?: string
-	/** Name of "JsDocDirective" */
-	_importDirective?: string
-	/** Ignore annotation */
-	_ignoreAnnotation?: string
-	/** Assert annotation */
-	_assertAnnotation?: string
-	/** tsmodel */
-	_tsmodel?: string
+	/** Import tokens */
+	_tokens: ImportTokens
 }
 
 /** Param */

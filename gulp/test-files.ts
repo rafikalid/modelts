@@ -12,7 +12,11 @@ const isProd= process.argv.includes('--prod');
 const TsProject = GulpTypescript.createProject('tsconfig.json', {
 	removeComments: isProd,
 	pretty: !isProd,
-	getCustomTransformers: (program?: ts.Program)=> createTransformer(program!)
+	getCustomTransformers: function(program?: ts.Program){
+		return {
+			before: [createTransformer(program!)]
+		}
+	}
 });
 
 export function compileTest(){
