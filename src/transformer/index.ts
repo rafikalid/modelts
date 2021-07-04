@@ -2,8 +2,7 @@ import { ModelKind, RootModel, ModelNode, ObjectField, ModelNodeWithChilds, Mode
 import ts from "typescript";
 // import treefy from 'treeify';
 
-//FIXME
-const PACKAGE_NAME= '"@src/index.js"';
+const PACKAGE_NAME = '"typesript-model"';
 /** Model pretty output */
 const PRETTY= true;
 

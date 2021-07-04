@@ -10,9 +10,13 @@ export type JsonTypes= string|number|boolean|null|undefined
 /** Create new Scalar */
 export interface ModelScalar<T>{
 	/** Parse value */
-	parse: (value: JsonTypes)=> T
+	parse?: (value: JsonTypes)=> T
 	/** Stringify value */
-	serialize: (value: T)=> JsonTypes
+	serialize?: (value: T)=> JsonTypes
+	/** Load from Database */
+	fromDB?: (value:any)=> T
+	/** Save into database */
+	toDB?: (value:T)=> any
 }
 
 /** Unions */
