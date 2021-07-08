@@ -2,19 +2,19 @@ import { ModelKind, RootModel, ModelNode, ObjectField, ModelNodeWithChilds, Mode
 import ts from "typescript";
 // import treefy from 'treeify';
 
-const PACKAGE_NAME = '"typesript-model"';
+const PACKAGE_NAME = '"tt-model"';
 /** Model pretty output */
 const PRETTY= true;
 
 /** visitor signature */
-type visitEachChildVisitorSignature= (node: ts.Node, parentDescriptor: ModelNode|undefined, _visite: VisiteEachNodeCb)=> void
-type VisiteEachNodeCb= (nodes: ts.Node|undefined|(ts.Node|undefined)[], parentDescriptor: ModelNode|undefined)=> void;
+type visitEachChildVisitorSignature<T>= (node: T, parentDescriptor: ModelNode|undefined, _visite: VisiteEachNodeCb<T>)=> void
+type VisiteEachNodeCb<T>= (nodes: T|undefined|(T|undefined)[], parentDescriptor: ModelNode|undefined)=> void;
 /** Custom visitor process */
-function visiteEachChild(node: ts.Node, visitor: visitEachChildVisitorSignature){
-	const nodeQueue: ts.Node[]= [node];
+function visiteEachChild<T>(node: T|T[], visitor: visitEachChildVisitorSignature<T>){
+	const nodeQueue: T[]= Array.isArray(node)? node : [node];
 	const parentQueue: (ModelNode|undefined)[]= [undefined];
 	var i= 0, len= nodeQueue.length;
-	function _visite(nodes: ts.Node|undefined|(ts.Node|undefined)[], parentDescriptor: ModelNode|undefined){
+	function _visite(nodes: T|undefined|(T|undefined)[], parentDescriptor: ModelNode|undefined){
 		if(Array.isArray(nodes)){
 			var j, jLen;
 			for(j=0, jLen= nodes.length; j<jLen; ++j){
@@ -50,12 +50,14 @@ export function createTransformer(program: ts.Program) {
 				children:	[],
 				directives: {},
 				_tokens:	{
-					tsmodel:		'tsmodel',
-					Model:			'Model',
-					ModelScalar:	'ModelScalar',
-					UNION:			'UNION',
-					ignore:			'ignore',
-					assert:			'assert'
+					tsModel:			'tsModel',
+					Model:				'Model',
+					ModelScalar:		'ModelScalar',
+					UNION:				'UNION',
+					ignore:				'ignore',
+					assert:				'assert',
+					ResolversOf:		'ResolversOf',
+					InputResolversOf:	'InputsOf'
 				}
 			};
 			// Step 1: Generate AST
@@ -67,19 +69,31 @@ export function createTransformer(program: ts.Program) {
 	}
 }
 
+/** Waiting queue for parsing interfaces, classes and enum */
+interface wParseQueueEntry{
+	node: ts.Node
+	directives?: ParseDirectivesReturn
+}
+
 /** Visitor */
 function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts.SourceFile, root: RootModel): ts.Visitor {
 	const factory= ctx.factory;
 	const typeChecker= program.getTypeChecker();
 	// Import tokens
 	const importTokens= root._tokens;
+	/** Interfaces & classes parsing queue */
+	const wParseQueue: wParseQueueEntry[]= [];
+	/** Interfaces without explicite parsing request */
+	const implicitWParseMap: Map<string, wParseQueueEntry[]>= new Map();
+	/** Remove decorators queue */
+	const RemoveDecoratorsQueue= [];
+
 	/** Return visitor */
 	return function(node: ts.Node){
-		// Step 1: compile tree
-		console.log('------<Step 1>-----')
-		visiteEachChild(node, _nodeVisitor);
-		console.log('------<Step 2>-----')
-		// Step 3: 
+		// Step 1: parse tree
+		visiteEachChild<ts.Node>(node, _nodeVisitor);
+		// Step 2: parse entities
+		visiteEachChild<wParseQueueEntry>(wParseQueue, _parseEntities);
 		return node;
 	}
 
@@ -92,12 +106,10 @@ function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts
 			throw new Error(`Duplicated entity name: ${calzzName}`);
 		root.children.push(root.mapChilds[calzzName] = entity);
 	}
-	
 
 	/** Visite each node */
-	function _nodeVisitor(node: ts.Node, parentDescriptor: ModelNode|undefined, addVisiteNodes: VisiteEachNodeCb){
+	function _nodeVisitor(node: ts.Node, parentDescriptor: ModelNode|undefined, addVisiteNodes: VisiteEachNodeCb<ts.Node>){
 		// get type
-		var currentNode: ModelNode;
 		var parseDirectives: ParseDirectivesReturn;
 		var nodeType;
 		var nodeSymbol;
@@ -118,29 +130,97 @@ function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts
 			/** Class && interfaces */
 			case ts.SyntaxKind.InterfaceDeclaration:
 			case ts.SyntaxKind.ClassDeclaration:
+			case ts.SyntaxKind.TypeLiteral:
+			case ts.SyntaxKind.EnumDeclaration:
+			case ts.SyntaxKind.TypeAliasDeclaration:
 				// jsDirectives
 				nodeType = typeChecker.getTypeAtLocation(node);
 				nodeSymbol = nodeType.getSymbol();
 				parseDirectives= _getDirectives(factory, typeChecker, importTokens, node, nodeSymbol);
-				if(!parseDirectives.ignore && (parseDirectives.tsModel || parentDescriptor)){
-					// node descriptor
-					currentNode = {
-						name:		(node as any).name?.getText(),
-						kind:		ModelKind.PLAIN_OBJECT,
-						jsDoc:		parseDirectives.jsDoc,
-						directives:	parseDirectives.directives,
-						children:	[],
-						mapChilds:	{},
-						isClass:	nodeType.isClass()
-					};
-					// Parse each property
-					addVisiteNodes(nodeType.getProperties().map(s=> s.valueDeclaration), currentNode);
-					// Add entity
-					if(parentDescriptor)
-						(parentDescriptor as ObjectField).children.push(currentNode);
-					else
-						_addEntity(currentNode, node);
+				if(parseDirectives.ignore){
+					// Ignore this entity
+				} else if(parseDirectives.tsModel){
+					// Add to parsing queue
+					wParseQueue.push({
+						node:		node as ts.InterfaceDeclaration,
+						directives:	parseDirectives
+					});
+				} else {
+					// Check for waiting parse
+					let interName= (node as ts.InterfaceDeclaration).name.getText();
+					let mp= implicitWParseMap.get(interName);
+					if(!mp){
+						mp= [];
+						implicitWParseMap.set(interName, mp);
+					}
+					mp.push({
+						node:		node as ts.InterfaceDeclaration,
+						directives:	parseDirectives
+					});
 				}
+				break;
+			/** Variable statement: create new scalar, union, ... */
+			case ts.SyntaxKind.VariableStatement:
+				nodeType = typeChecker.getTypeAtLocation(node);
+				nodeSymbol = nodeType.getSymbol();
+				if(!(parseDirectives = _getDirectives(factory, typeChecker, importTokens, node, nodeSymbol)).ignore)
+					deepChildOfKind(node, ts.SyntaxKind.VariableDeclaration, function(node){
+						_parseModelDirective(node as ts.VariableDeclaration, root, parseDirectives);
+					});
+				break;
+			/** By default add all childs for check */
+			default:
+				addVisiteNodes(node.getChildren(), undefined);
+		}
+	}
+
+	/** Parse entities */
+	function _parseEntities({node, directives}: wParseQueueEntry, parentDescriptor: ModelNode|undefined, addVisiteNodes: VisiteEachNodeCb<wParseQueueEntry>){
+		var currentNode: ModelNode, nodeType;
+		switch(node.kind){
+			case ts.SyntaxKind.InterfaceDeclaration:
+			case ts.SyntaxKind.ClassDeclaration:
+				// jsDirectives
+				nodeType = typeChecker.getTypeAtLocation(node);
+				// node descriptor
+				currentNode = {
+					name:		(node as any).name?.getText(),
+					kind:		ModelKind.PLAIN_OBJECT,
+					jsDoc:		directives?.jsDoc,
+					directives:	directives?.directives,
+					children:	[],
+					mapChilds:	{},
+					isClass:	node.kind===ts.SyntaxKind.ClassDeclaration
+				};
+				// Parse each property
+				nodeType.getProperties().forEach(function({valueDeclaration}){
+					if(valueDeclaration)
+						addVisiteNodes({node: valueDeclaration}, currentNode);
+				});
+				// Add entity
+				// if(parentDescriptor)
+				// 	(parentDescriptor as ObjectField).children.push(currentNode);
+				// else
+				_addEntity(currentNode, node);
+				break;
+			/** Enumeration */
+			case ts.SyntaxKind.EnumDeclaration:
+				// jsDirectives
+				// nodeType = typeChecker.getTypeAtLocation(node);
+				// current node
+				currentNode = {
+					name:		(node as ts.EnumDeclaration).name?.getText(),
+					kind:		ModelKind.ENUM,
+					jsDoc:		directives?.jsDoc,
+					directives:	directives?.directives,
+					children:	[],
+					mapChilds:	{}
+				};
+				_addEntity(currentNode, node);
+				// Go through each child
+				node.getChildren().forEach(function(e){
+					addVisiteNodes({node: e}, currentNode);
+				});
 				break;
 			/** Type literal */
 			case ts.SyntaxKind.TypeLiteral:
@@ -157,65 +237,41 @@ function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts
 					(parentDescriptor as ObjectField).children.push(currentNode);
 				}
 				break;
-			/** Enumeration */
-			case ts.SyntaxKind.EnumDeclaration:
-				// jsDirectives
-				nodeType = typeChecker.getTypeAtLocation(node);
-				nodeSymbol = nodeType.getSymbol();
-				parseDirectives = _getDirectives(factory, typeChecker, importTokens, node, nodeSymbol);
-				if (parseDirectives.tsModel && !parseDirectives.ignore){
-					// current node
-					currentNode = {
-						name:		(node as ts.EnumDeclaration).name?.getText(),
-						kind:		ModelKind.ENUM,
-						jsDoc:		parseDirectives.jsDoc,
-						directives:	parseDirectives.directives,
-						children:	[],
-						mapChilds:	{}
-					};
-					if(parentDescriptor)
-						(parentDescriptor as ObjectField).children.push(currentNode);
-					else
-						_addEntity(currentNode, node);
-					// Go through each child
-					addVisiteNodes(node.getChildren(), currentNode);
-				}
-				break;
 			/** Property signature */
 			case ts.SyntaxKind.PropertySignature:
-				nodeType = typeChecker.getTypeAtLocation(node);
-				nodeSymbol = nodeType.getSymbol();
-				if(parentDescriptor && !(parseDirectives = _getDirectives(factory, typeChecker, importTokens, node, nodeSymbol)).ignore){
+				// nodeType = typeChecker.getTypeAtLocation(node);
+				if(parentDescriptor){
 					if (parentDescriptor.kind !== ModelKind.PLAIN_OBJECT)
-						throw new Error(`Expected parent node to be interface or class, got ${ts.SyntaxKind[node.kind]} at ${node.getStart()}`);
+						throw new Error(`Expected parent node to be interface or class, got ${ModelKind[parentDescriptor.kind]} at ${node.getText()}`);
 					// Current node
 					currentNode = {
 						kind:		ModelKind.FIELD,
 						name:		(node as ts.PropertySignature).name.getText(),
-						jsDoc:		parseDirectives.jsDoc,
-						directives:	parseDirectives.directives,
+						jsDoc:		directives?.jsDoc,
+						directives:	directives?.directives,
 						required:	!(node as ts.PropertySignature).questionToken,
 						children:	[]
 					};
 					// Add to parent
 					parentDescriptor.children.push(parentDescriptor.mapChilds[currentNode.name!] = currentNode);
 					// Go through childs
-					addVisiteNodes(node.getChildren(), currentNode);
+					node.getChildren().forEach(function(e){
+						addVisiteNodes({node: e}, currentNode);
+					});
 				}
 				break;
 			/** Enum member */
 			case ts.SyntaxKind.EnumMember:
-				nodeType = typeChecker.getTypeAtLocation(node);
-				nodeSymbol = nodeType.getSymbol();
-				if (parentDescriptor && !(parseDirectives = _getDirectives(factory, typeChecker, importTokens, node, nodeSymbol)).ignore) {
+				// nodeType = typeChecker.getTypeAtLocation(node);
+				if (parentDescriptor) {
 					if (parentDescriptor.kind !== ModelKind.ENUM)
 						throw new Error(`Expected parent node to ENUM, got ${ts.SyntaxKind[node.kind]} at ${node.getStart()}`);
 					// Current node
 					currentNode = {
 						kind:		ModelKind.ENUM_MEMBER,
 						name:		(node as ts.PropertySignature).name.getText(),
-						jsDoc:		parseDirectives.jsDoc,
-						directives:	parseDirectives.directives,
+						jsDoc:		directives?.jsDoc,
+						directives:	directives?.directives,
 						required:	true,
 						value:		(function(){
 							var i, len, childs= node.getChildren();
@@ -230,16 +286,9 @@ function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts
 				break;
 			/** Type */
 			case ts.SyntaxKind.TypeAliasDeclaration:
-				nodeType = typeChecker.getTypeAtLocation(node);
-				nodeSymbol = nodeType.getSymbol();
-				parseDirectives = _getDirectives(factory, typeChecker, importTokens, node, nodeSymbol);
-				if (parseDirectives.tsModel && !parseDirectives.ignore) {
-					console.log('----------------------------------------->> TYPE: ');
-				}
+				// nodeType = typeChecker.getTypeAtLocation(node);
+				console.log('----------------------------------------->> TYPE: ');
 				break;
-			// /** */
-			// case ts.SyntaxKind:
-			// 	break;
 			//* Basic Types
 			case ts.SyntaxKind.TypeReference:
 			case ts.SyntaxKind.StringKeyword:
@@ -291,19 +340,19 @@ function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts
 			/** Tuple as Multipe types */
 			case ts.SyntaxKind.TupleType:
 				throw new Error(`Tuples are not supported, do you mean multiple types? at: ${node.getText()}: ${node.getStart()}`);
+				break;
 			/** Method declaration */
 			case ts.SyntaxKind.MethodDeclaration:
 				nodeType = typeChecker.getTypeAtLocation(node);
-				nodeSymbol = nodeType.getSymbol();
-				if(parentDescriptor && !(parseDirectives = _getDirectives(factory, typeChecker, importTokens, node, nodeSymbol)).ignore){
+				if(parentDescriptor){
 					if (parentDescriptor.kind !== ModelKind.PLAIN_OBJECT)
-						throw new Error(`Expected parent node to be interface or class, got ${ts.SyntaxKind[node.kind]} at ${node.getText()}: ${node.getStart()}`);
+						throw new Error(`Expected parent node to be interface or class, got ${ModelKind[parentDescriptor.kind]} at ${node.getText()}: ${node.getStart()}`);
 					var methodName= (node as ts.MethodDeclaration).name.getText();
 					currentNode = {
 						kind:		ModelKind.METHOD,
 						name:		methodName,
-						jsDoc:		parseDirectives.jsDoc,
-						directives:	parseDirectives.directives,
+						jsDoc:		directives?.jsDoc,
+						directives:	directives?.directives,
 						// method:		node as ts.MethodDeclaration,
 						method: `${parentDescriptor.name}.prototype.${methodName}`,
 						/** [ResultType, ParamType] */
@@ -312,11 +361,13 @@ function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts
 					// Append to parent
 					parentDescriptor.children.push(parentDescriptor.mapChilds[currentNode.name!] = currentNode);
 					// Go trough childs
-					addVisiteNodes(node.getChildren(), currentNode);
+					node.getChildren().forEach(function(e){
+						addVisiteNodes({node: e}, currentNode);
+					});
 					// Go through arg param
 					var params = (node as ts.MethodDeclaration).parameters;
 					if (params && params[1])
-						addVisiteNodes(params[1], currentNode);
+						addVisiteNodes({node: params[1]}, currentNode);
 					return node;
 				}
 				break;
@@ -335,16 +386,6 @@ function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts
 					parentDescriptor.children[1] = currentNode;
 				}
 				break;
-			/** Variable statement: create new scalar, union, ... */
-			case ts.SyntaxKind.VariableDeclaration:
-				nodeType = typeChecker.getTypeAtLocation(node);
-				nodeSymbol = nodeType.getSymbol();
-				if(!(parseDirectives = _getDirectives(factory, typeChecker, importTokens, node, nodeSymbol)).ignore)
-					_parseModelDirective(node as ts.VariableDeclaration, root, parseDirectives);
-				break;
-			/** By default add all childs for check */
-			default:
-				addVisiteNodes(node.getChildren(), undefined);
 		}
 	}
 }
@@ -546,7 +587,7 @@ function deepChildOfKind<T extends ts.Node>(node: ts.Node, kind: ts.SyntaxKind, 
 		node= queue[i++];
 		if(node.kind===kind)
 			cb(node as T);
-		else{
+		else {
 			var childs= node.getChildren();
 			var j, jLen= childs.length;
 			for(j=0; j<jLen; ++j){
@@ -569,7 +610,7 @@ function _getDirectives(factory: ts.NodeFactory, typeChecker: ts.TypeChecker, im
 	var i, len, child, childs, expression: ts.Expression|undefined, dName: string;
 	const ignoreToken=	importTokens.ignore;
 	const assertToken=	importTokens.assert;
-	const tsModelToken=	importTokens.tsmodel;
+	const tsModelToken=	importTokens.tsModel;
 	// result
 	const result: ParseDirectivesReturn= {
 		ignore:		false,
@@ -586,15 +627,24 @@ function _getDirectives(factory: ts.NodeFactory, typeChecker: ts.TypeChecker, im
 					throw 2;
 			}
 		}
+		// jsDoc
+		var jsDocArr= [];
+		var jsDocEl;
+		if(nodeSymbol && (jsDocEl= nodeSymbol.getDocumentationComment(typeChecker)).length){
+			for(let e of jsDocEl)
+				jsDocArr.push(e.text);
+		}
 		// Load from JsDoc
 		if(childs= nodeSymbol?.getJsDocTags()){
 			len= childs.length;
 			for(i=0; i<len; ++i){
 				child= childs[i];
 				dName= child.name;
+				let childText= child.text? `${dName}(${child.text.map(e=> e.text).join("\n")}` : dName;
+				jsDocArr.push(`@${childText}`); // jsDoc
 				switch(dName){
 					case assertToken:
-						directives.push(factory.createIdentifier(child.text? `${dName}(${child.text.map(e=> e.text).join("\n")}` : dName));
+						directives.push(factory.createIdentifier(childText));
 						break;
 					case tsModelToken:
 						result.tsModel= true;
@@ -630,21 +680,13 @@ function _getDirectives(factory: ts.NodeFactory, typeChecker: ts.TypeChecker, im
 						case ignoreToken:
 							throw 1;
 					}
+					jsDocArr.push(`@${expression.getText()}`); // jsDoc
 				}
 			}
 		}
-		// jsDoc
-		var jsDocArr= [];
-		var jsDocEl;
-		if(nodeSymbol && (jsDocEl= nodeSymbol.getDocumentationComment(typeChecker)).length){
-			for(let e of jsDocEl)
-				jsDocArr.push(e.text);
-		}
-		if(directives.length){
-			for(let e of directives)
-				jsDocArr.push(`@${e.getText()}`);
+		//-
+		if(directives.length)
 			result.directives= directives;
-		}
 		if(jsDocArr.length)
 			result.jsDoc= jsDocArr.join("\n");
 	}catch(err){

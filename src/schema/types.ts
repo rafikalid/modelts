@@ -30,12 +30,20 @@ export type uInt= number;
 /** Unsigned integer */
 export const uIntScalar: ModelScalar<uInt>= {
 	parse(value){
-		if(typeof value === 'number' && Number.isSafeInteger(value) && value>0)
+		if(typeof value === 'number' && Number.isSafeInteger(value) && value>=0)
 			return value;
 		else
 			throw new Error(`Illegal unsigned int: ${value}`);
-	},
-	serialize(value){
-		return value;
+	}
+};
+
+/** Unsinged Float */
+export type uFloat= number;
+export const uFloatScalar: ModelScalar<uInt>= {
+	parse(value){
+		if(typeof value === 'number' && value>=0)
+			return value;
+		else
+			throw new Error(`Illegal unsigned float: ${value}`);
 	}
 };

@@ -1,5 +1,8 @@
 /** Ignore field or method (do not add theme as fields or resolvers) */
-export function ignore(target: any, propertyKey: string, descriptor: PropertyDescriptor){}
+export function ignore(target: any, propertyKey?: string, descriptor?: PropertyDescriptor){}
+
+/** Desclar a class as Model */
+export function tsModel(target: any, propertyKey?: string, descriptor?: PropertyDescriptor){}
 
 
 /** Assert options */

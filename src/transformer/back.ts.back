@@ -392,7 +392,7 @@ function _parseDecorators(factory: ts.NodeFactory, node: ts.MethodDeclaration, c
 	}
 }
 
-/** Check has not "@tsmodel" flag */
+/** Check has not "@tsModel" flag */
 function _isTsModel(node: ts.Node, root: RootModel): boolean {
 	// Check jsDoc
 	var found= !!node.getChildren().find(e=> e.kind===ts.SyntaxKind.JSDocComment)?.getChildren().find(e=> e.getFirstToken()?.getText()==='tsmodel');

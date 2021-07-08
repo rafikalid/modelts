@@ -133,12 +133,14 @@ export interface ModelJsDocDirective extends ModelBaseNode{
 
 /** Import tokens */
 export interface ImportTokens{
-	tsmodel:		string
-	Model:			string
-	ModelScalar:	string
-	UNION:			string
-	ignore:			string
-	assert:			string
+	tsModel:			string
+	Model:				string
+	ModelScalar:		string
+	UNION:				string
+	ignore:				string
+	assert:				string
+	ResolversOf:		string
+	InputResolversOf:	string
 };
 
 /** Model base class */

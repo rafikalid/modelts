@@ -1,4 +1,4 @@
-import { Int, JsonTypes, Model, ModelScalar, UNION, ResolversOf, JsDocDirective, assert, ignore } from "@src/index.js";
+import { Int, JsonTypes, Model, ModelScalar, UNION, ResolversOf, assert, ignore } from "@src/index.js";
 
 /**
  * @tsmodel
@@ -127,25 +127,3 @@ export const UnionExample: UNION<User|Booking>= {
 		return s;
 	}
 }
-
-/** Create jsDoc directive */
-const has: JsDocDirective<any, any>= {
-	resolver(txt: string, fieldType:string){
-		return {
-			input(parent: any, value: any, ctx: any, info: any){
-				console.log('--- Excec execute input pipeline');
-				return value;
-			},
-			output(resolver: Function){
-				return async function(parent: any, arg: any, ctx: any, info: any){
-					console.log('---- Prefix check');
-					// Do prefix checks
-					var r= await resolver(parent, arg, ctx, info);
-					// Do post checks
-					console.log('--- postfix check');
-					return r;
-				}
-			}
-		}
-	}
-};
