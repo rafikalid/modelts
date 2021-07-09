@@ -4,6 +4,9 @@ import { JsonTypes } from "./types";
 
 /** Model kinds */
 export enum ModelKind{
+	/** Root node */
+	ROOT,
+	/** Plain object */
 	PLAIN_OBJECT,
 
 	/** Enumeration */
@@ -41,7 +44,7 @@ export enum ModelKind{
 }
 
 /** Model node */
-export type ModelNode= ModelObjectNode | ConstNode | ModelEnumNode | EnumMember | ModelListNode | ModelRefNode | ModelUnionNode | ObjectField | ModelMethod | ModelParam | ModelScalarNode<any> | ModelJsDocDirective
+export type ModelNode= ModelObjectNode | ConstNode | ModelEnumNode | EnumMember | ModelListNode | ModelRefNode | ModelUnionNode | ObjectField | ModelMethod | ModelParam | ModelScalarNode<any>
 
 /** Model node AST */
 export interface ModelBaseNode{
@@ -50,7 +53,7 @@ export interface ModelBaseNode{
 	/** Comment */
 	jsDoc:		string | undefined
 	/** jsDoc directives */
-	directives:	ts.Expression[] | undefined
+	directives:	string[] | undefined
 }
 
 /** Const value */
@@ -67,7 +70,7 @@ export interface ModelNodeWithChilds extends ModelBaseNode{
 /** Object node */
 export interface ModelObjectNode extends ModelNodeWithChilds{
 	kind:		ModelKind.PLAIN_OBJECT
-	mapChilds:	Record<string, ObjectField|ModelMethod>
+	mapChilds:	Record<string, ObjectField>
 	isClass:	boolean
 }
 
@@ -100,6 +103,10 @@ export interface ObjectField extends ModelNodeWithChilds{
 	kind: ModelKind.FIELD,
 	/** Is required */
 	required:	boolean
+	/** Output Resolver */
+	resolver:	ModelMethod|undefined
+	/** Input resolver */
+	input:		string|undefined
 }
 
 /** Enum member */
@@ -124,11 +131,11 @@ export interface ModelMethod extends ModelBaseNode{
 	children: [ModelNode|undefined, ModelNode|undefined]
 }
 
-/** jsDoc directive */
-export interface ModelJsDocDirective extends ModelBaseNode{
-	kind:		ModelKind.DIRECTIVE
-	resolver:	ts.ObjectLiteralExpression
-}
+// /** jsDoc directive */
+// export interface ModelJsDocDirective extends ModelBaseNode{
+// 	kind:		ModelKind.DIRECTIVE
+// 	resolver:	ts.ObjectLiteralExpression
+// }
 
 
 /** Import tokens */
@@ -144,11 +151,10 @@ export interface ImportTokens{
 };
 
 /** Model base class */
-export interface RootModel{
+export interface RootModel extends ModelBaseNode{
+	kind:		ModelKind.ROOT
 	children:	ModelNode[],
 	mapChilds:	Record<string, ModelNode>
-	/** jsDoc custom directives  */
-	directives: Record<string, ModelJsDocDirective>
 	/** Import tokens */
 	_tokens: ImportTokens
 }

@@ -7,34 +7,8 @@ const PACKAGE_NAME = '"tt-model"';
 const PRETTY= true;
 
 /** visitor signature */
-type visitEachChildVisitorSignature<T>= (node: T, parentDescriptor: ModelNode|undefined, _visite: VisiteEachNodeCb<T>)=> void
+type visitEachChildVisitorSignature<T>= (node: T, parentDescriptor: ModelNode|undefined, _visite: VisiteEachNodeCb<T>, addEntityToParse: (entity: ts.TypeNode)=> string)=> void
 type VisiteEachNodeCb<T>= (nodes: T|undefined|(T|undefined)[], parentDescriptor: ModelNode|undefined)=> void;
-/** Custom visitor process */
-function visiteEachChild<T>(node: T|T[], visitor: visitEachChildVisitorSignature<T>){
-	const nodeQueue: T[]= Array.isArray(node)? node : [node];
-	const parentQueue: (ModelNode|undefined)[]= [undefined];
-	var i= 0, len= nodeQueue.length;
-	function _visite(nodes: T|undefined|(T|undefined)[], parentDescriptor: ModelNode|undefined){
-		if(Array.isArray(nodes)){
-			var j, jLen;
-			for(j=0, jLen= nodes.length; j<jLen; ++j){
-				if(nodes[j]!=null){
-					nodeQueue.push(nodes[j]!);
-					parentQueue.push(parentDescriptor)
-				}
-			}
-		} else if(nodes) {
-			nodeQueue.push(nodes);
-			parentQueue.push(parentDescriptor)
-		}
-		// Update lenght
-		len= nodeQueue.length;
-	}
-	while(i<len){
-		visitor(nodeQueue[i], parentQueue[i], _visite);
-		++i;
-	}
-}
 
 /**
  * Transforme typescript interfaces and classes to Models
@@ -43,12 +17,14 @@ export function createTransformer(program: ts.Program) {
 	//* BEFORE
 	return function(ctx: ts.TransformationContext): ts.Transformer<ts.SourceFile> {
 		return function (sf: ts.SourceFile) {
-			// console.log('FILE>>: ', sf.fileName)
 			// Prepare root node
 			const root: RootModel = {
+				kind:		ModelKind.ROOT,
+				name:		undefined,
+				jsDoc:		undefined,
 				mapChilds:	{},
 				children:	[],
-				directives: {},
+				directives: undefined,
 				_tokens:	{
 					tsModel:			'tsModel',
 					Model:				'Model',
@@ -73,6 +49,8 @@ export function createTransformer(program: ts.Program) {
 interface wParseQueueEntry{
 	node: ts.Node
 	directives?: ParseDirectivesReturn
+	/** Distinguish methods if are input or output resolvers */
+	isInput:	boolean
 }
 
 /** Visitor */
@@ -85,8 +63,6 @@ function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts
 	const wParseQueue: wParseQueueEntry[]= [];
 	/** Interfaces without explicite parsing request */
 	const implicitWParseMap: Map<string, wParseQueueEntry[]>= new Map();
-	/** Remove decorators queue */
-	const RemoveDecoratorsQueue= [];
 
 	/** Return visitor */
 	return function(node: ts.Node){
@@ -97,14 +73,70 @@ function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts
 		return node;
 	}
 
-	/** Add entity */
-	function _addEntity(entity: ModelNode, node: ts.Node) {
-		var calzzName = entity.name;
-		if (!calzzName)
-			throw new Error(`Expected entity name at: ${node.getStart()}`);
-		if (root.mapChilds[calzzName])
-			throw new Error(`Duplicated entity name: ${calzzName}`);
-		root.children.push(root.mapChilds[calzzName] = entity);
+	/** get entity */
+	function _getEntity(node: ts.ClassDeclaration|ts.InterfaceDeclaration|ts.EnumDeclaration, directives: ParseDirectivesReturn | undefined): ModelNode{
+		if (!node.name)
+			throw new Error(`Expected entity name at: ${node.getText()}:${node.getStart()}`);
+		var calzzName = node.name.getText();
+		// Check if has "ResolversOf" or "InputResolversOf"
+		if(ts.isClassDeclaration(node) && node.heritageClauses){
+			let heritageClauses= node.heritageClauses;
+			rLoop: for (let i = 0, len= heritageClauses.length; i < len; i++) {
+				const element = heritageClauses[i];
+				let types= element.types;
+				for (let j = 0, jlen= types.length; j < jlen; j++) {
+					let txt= types[j].expression.getText();
+					if(txt===importTokens.ResolversOf || txt===importTokens.InputResolversOf){
+						calzzName= _addEntityToParse(types[j].typeArguments![0]);
+						break rLoop;
+					}
+				}
+			}
+		}
+		// Get from root
+		var result= root.mapChilds[calzzName];
+		if(!result){
+			switch(node.kind){
+				case ts.SyntaxKind.InterfaceDeclaration:
+				case ts.SyntaxKind.ClassDeclaration:
+					result = {
+						name:		calzzName,
+						kind:		ModelKind.PLAIN_OBJECT,
+						jsDoc:		undefined,
+						directives:	undefined,
+						children:	[],
+						mapChilds:	{},
+						isClass:	node.kind===ts.SyntaxKind.ClassDeclaration
+					};
+					break;
+				case ts.SyntaxKind.EnumDeclaration:
+					result = {
+						name:		calzzName,
+						kind:		ModelKind.ENUM,
+						jsDoc:		undefined,
+						directives:	undefined,
+						children:	[],
+						mapChilds:	{}
+					};
+					break;
+				default:
+					throw new Error(`Enexpected kind`);
+			}
+			root.children.push(root.mapChilds[calzzName] = result);
+		}
+		// cirectives
+		if(directives){
+			if(directives.jsDoc){
+				result.jsDoc= result.jsDoc? `${result.jsDoc}\n${directives.jsDoc}`: directives.jsDoc;
+			}
+			if(directives.directives){
+				if(result.directives)
+					result.directives.push(...directives.directives);
+				else
+					result.directives= directives.directives
+			}
+		}
+		return result;
 	}
 
 	/** Visite each node */
@@ -137,26 +169,49 @@ function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts
 				nodeType = typeChecker.getTypeAtLocation(node);
 				nodeSymbol = nodeType.getSymbol();
 				parseDirectives= _getDirectives(factory, typeChecker, importTokens, node, nodeSymbol);
-				if(parseDirectives.ignore){
-					// Ignore this entity
-				} else if(parseDirectives.tsModel){
-					// Add to parsing queue
-					wParseQueue.push({
-						node:		node as ts.InterfaceDeclaration,
-						directives:	parseDirectives
-					});
-				} else {
-					// Check for waiting parse
-					let interName= (node as ts.InterfaceDeclaration).name.getText();
-					let mp= implicitWParseMap.get(interName);
-					if(!mp){
-						mp= [];
-						implicitWParseMap.set(interName, mp);
+				if(!parseDirectives.ignore){
+					// Check if has "ResolversOf" or "InputResolversOf"
+					let isInput= false;
+					let hasResolvers= false;
+					if(ts.isClassDeclaration(node) && node.heritageClauses){
+						let heritageClauses= node.heritageClauses;
+						rLoop: for (let i = 0, len= heritageClauses.length; i < len; i++) {
+							const element = heritageClauses[i];
+							let types= element.types;
+							for (let j = 0, jlen= types.length; j < jlen; j++) {
+								let txt= types[j].expression.getText();
+								if(txt ===  importTokens.ResolversOf){
+									hasResolvers= true;
+									break rLoop;
+								} else if(txt=== importTokens.InputResolversOf){
+									isInput= hasResolvers= true;
+									break rLoop;
+								}
+							}
+						}
 					}
-					mp.push({
-						node:		node as ts.InterfaceDeclaration,
-						directives:	parseDirectives
-					});
+					// if is a model to parse
+					if(hasResolvers || parseDirectives.tsModel){
+						// Add to parsing queue
+						wParseQueue.push({
+							node:		node,
+							directives:	parseDirectives,
+							isInput:	isInput
+						});
+					} else {
+						// Check for waiting parse
+						let interName= (node as ts.InterfaceDeclaration).name.getText();
+						let mp= implicitWParseMap.get(interName);
+						if(!mp){
+							mp= [];
+							implicitWParseMap.set(interName, mp);
+						}
+						mp.push({
+							node:		node as ts.InterfaceDeclaration,
+							directives:	parseDirectives,
+							isInput:	false
+						});
+					}
 				}
 				break;
 			/** Variable statement: create new scalar, union, ... */
@@ -175,51 +230,29 @@ function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts
 	}
 
 	/** Parse entities */
-	function _parseEntities({node, directives}: wParseQueueEntry, parentDescriptor: ModelNode|undefined, addVisiteNodes: VisiteEachNodeCb<wParseQueueEntry>){
+	function _parseEntities({node, directives, isInput}: wParseQueueEntry, parentDescriptor: ModelNode|undefined, addVisiteNodes: VisiteEachNodeCb<wParseQueueEntry>){
 		var currentNode: ModelNode, nodeType;
 		switch(node.kind){
 			case ts.SyntaxKind.InterfaceDeclaration:
 			case ts.SyntaxKind.ClassDeclaration:
 				// jsDirectives
 				nodeType = typeChecker.getTypeAtLocation(node);
-				// node descriptor
-				currentNode = {
-					name:		(node as any).name?.getText(),
-					kind:		ModelKind.PLAIN_OBJECT,
-					jsDoc:		directives?.jsDoc,
-					directives:	directives?.directives,
-					children:	[],
-					mapChilds:	{},
-					isClass:	node.kind===ts.SyntaxKind.ClassDeclaration
-				};
+				currentNode= _getEntity(node as ts.InterfaceDeclaration, directives);
 				// Parse each property
 				nodeType.getProperties().forEach(function({valueDeclaration}){
 					if(valueDeclaration)
-						addVisiteNodes({node: valueDeclaration}, currentNode);
+						addVisiteNodes({node: valueDeclaration, isInput}, currentNode);
 				});
-				// Add entity
-				// if(parentDescriptor)
-				// 	(parentDescriptor as ObjectField).children.push(currentNode);
-				// else
-				_addEntity(currentNode, node);
 				break;
 			/** Enumeration */
 			case ts.SyntaxKind.EnumDeclaration:
 				// jsDirectives
 				// nodeType = typeChecker.getTypeAtLocation(node);
 				// current node
-				currentNode = {
-					name:		(node as ts.EnumDeclaration).name?.getText(),
-					kind:		ModelKind.ENUM,
-					jsDoc:		directives?.jsDoc,
-					directives:	directives?.directives,
-					children:	[],
-					mapChilds:	{}
-				};
-				_addEntity(currentNode, node);
+				currentNode= _getEntity(node as ts.EnumDeclaration, directives);
 				// Go through each child
 				node.getChildren().forEach(function(e){
-					addVisiteNodes({node: e}, currentNode);
+					addVisiteNodes({node: e, isInput}, currentNode);
 				});
 				break;
 			/** Type literal */
@@ -250,14 +283,67 @@ function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts
 						jsDoc:		directives?.jsDoc,
 						directives:	directives?.directives,
 						required:	!(node as ts.PropertySignature).questionToken,
-						children:	[]
+						children:	[],
+						resolver:	undefined,
+						input:		undefined
 					};
 					// Add to parent
 					parentDescriptor.children.push(parentDescriptor.mapChilds[currentNode.name!] = currentNode);
 					// Go through childs
 					node.getChildren().forEach(function(e){
-						addVisiteNodes({node: e}, currentNode);
+						addVisiteNodes({node: e, isInput}, currentNode);
 					});
+				}
+				break;
+			
+			/** Method declaration */
+			case ts.SyntaxKind.MethodDeclaration:
+				// nodeType = typeChecker.getTypeAtLocation(node);
+				if(parentDescriptor){
+					if (parentDescriptor.kind !== ModelKind.PLAIN_OBJECT)
+						throw new Error(`Expected parent node to be interface or class, got ${ModelKind[parentDescriptor.kind]} at ${node.getText()}`);
+					// resolver
+					let resolverMethod: ObjectField['resolver']= undefined;
+					let inputResolver: ObjectField['input']= undefined;
+					let methodName= (node as ts.MethodDeclaration).name.getText();
+					if(isInput){
+						inputResolver= `${parentDescriptor.name}.prototype.${methodName}`;
+					} else {
+						resolverMethod= {
+							kind:		ModelKind.METHOD,
+							name:		methodName,
+							jsDoc:		directives?.jsDoc,
+							directives:	directives?.directives,
+							// method:		node as ts.MethodDeclaration,
+							method: `${parentDescriptor.name}.prototype.${methodName}`,
+							/** [ResultType, ParamType] */
+							children:	[undefined, undefined],
+						};
+					}
+					// Current node
+					currentNode = {
+						kind:		ModelKind.FIELD,
+						name:		methodName,
+						jsDoc:		directives?.jsDoc,
+						directives:	directives?.directives,
+						required:	!(node as ts.MethodDeclaration).questionToken,
+						children:	[],
+						resolver:	resolverMethod,
+						input:		inputResolver
+					};
+					// Add to parent
+					parentDescriptor.children.push(parentDescriptor.mapChilds[currentNode.name!] = currentNode);
+					// Go trough childs
+					let nNode= resolverMethod||currentNode
+					node.getChildren().forEach(function(e){
+						addVisiteNodes({node: e, isInput}, nNode);
+					});
+					// Go through arg param
+					if(!isInput){
+						var params = (node as ts.MethodDeclaration).parameters;
+						if (params && params[1])
+							addVisiteNodes({node: params[1], isInput}, resolverMethod);
+					}
 				}
 				break;
 			/** Enum member */
@@ -341,36 +427,6 @@ function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts
 			case ts.SyntaxKind.TupleType:
 				throw new Error(`Tuples are not supported, do you mean multiple types? at: ${node.getText()}: ${node.getStart()}`);
 				break;
-			/** Method declaration */
-			case ts.SyntaxKind.MethodDeclaration:
-				nodeType = typeChecker.getTypeAtLocation(node);
-				if(parentDescriptor){
-					if (parentDescriptor.kind !== ModelKind.PLAIN_OBJECT)
-						throw new Error(`Expected parent node to be interface or class, got ${ModelKind[parentDescriptor.kind]} at ${node.getText()}: ${node.getStart()}`);
-					var methodName= (node as ts.MethodDeclaration).name.getText();
-					currentNode = {
-						kind:		ModelKind.METHOD,
-						name:		methodName,
-						jsDoc:		directives?.jsDoc,
-						directives:	directives?.directives,
-						// method:		node as ts.MethodDeclaration,
-						method: `${parentDescriptor.name}.prototype.${methodName}`,
-						/** [ResultType, ParamType] */
-						children:	[undefined, undefined],
-					};
-					// Append to parent
-					parentDescriptor.children.push(parentDescriptor.mapChilds[currentNode.name!] = currentNode);
-					// Go trough childs
-					node.getChildren().forEach(function(e){
-						addVisiteNodes({node: e}, currentNode);
-					});
-					// Go through arg param
-					var params = (node as ts.MethodDeclaration).parameters;
-					if (params && params[1])
-						addVisiteNodes({node: params[1]}, currentNode);
-					return node;
-				}
-				break;
 			/** Method param */
 			case ts.SyntaxKind.Parameter:
 				if(parentDescriptor){
@@ -388,14 +444,60 @@ function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts
 				break;
 		}
 	}
+
+	/** Custom visitor process */
+	function visiteEachChild<T>(node: T|T[], visitor: visitEachChildVisitorSignature<T>){
+		const nodeQueue: T[]= Array.isArray(node)? node : [node];
+		const parentQueue: (ModelNode|undefined)[]= Array(nodeQueue.length).fill(undefined);
+		var i= 0, len= nodeQueue.length;
+		function _visite(nodes: T|undefined|(T|undefined)[], parentDescriptor: ModelNode|undefined){
+			if(Array.isArray(nodes)){
+				var j, jLen;
+				for(j=0, jLen= nodes.length; j<jLen; ++j){
+					if(nodes[j]!=null){
+						nodeQueue.push(nodes[j]!);
+						parentQueue.push(parentDescriptor)
+					}
+				}
+			} else if(nodes) {
+				nodeQueue.push(nodes);
+				parentQueue.push(parentDescriptor)
+			}
+			// Update lenght
+			len= nodeQueue.length;
+		}
+		while(i<len){
+			visitor(nodeQueue[i], parentQueue[i], _visite, _addEntityToParse);
+			++i;
+		}
+
+		/** Add entity to parse */
+		function _addEntityToParse(entity: ts.TypeNode): string{
+			var entityName= entity.getText()!;
+			var entityType: ts.Type, declaration: ts.Declaration | undefined;
+			console.log('--- add entity: ', entityName)
+			var entityType: ts.Type, declarations: ts.Declaration[] | undefined;
+			if((entityType= typeChecker.getTypeAtLocation(entity)) && (declarations= entityType.getSymbol()?.declarations)){
+				if(declarations.length===1){
+					console.log('dec---:', declarations[0].getText())
+					_visite({node: declarations[0], isInput: false}, undefined); ///------------------- here
+				} else {
+					console.log('--- Enexpected declarations!')
+				}
+			}
+			return entityName;
+		}
+	}
 }
 
 /** Insert AST */
 function _astVisitor(program: ts.Program, ctx: ts.TransformationContext, sf: ts.SourceFile, root: RootModel){
 	const factory= ctx.factory;
-	const typeChecker= program.getTypeChecker();
 	const importTokens= root._tokens;
 	const ignoreToken= `@${importTokens.ignore}`;
+	const tsModelToken= `@${importTokens.tsModel}`;
+	const assertToken= `@${importTokens.assert}`;
+	const modelToken= importTokens.Model;
 	return function(node: ts.Node){
 		if(root.children.length)
 			node= ts.visitEachChild(node, _visitor, ctx);
@@ -404,179 +506,146 @@ function _astVisitor(program: ts.Program, ctx: ts.TransformationContext, sf: ts.
 	/** Visitor */
 	function _visitor(node: ts.Node): ts.Node{
 		if(ts.isNewExpression(node)){
-			//* Model new Object
-			node= factory.createNewExpression(
-				node.expression,
-				node.typeArguments,
-				[_serializeAST(root, ctx)]
-			);
+			if(node.expression.getText()===modelToken){
+				//* Model new Object
+				node= factory.createNewExpression(
+					node.expression,
+					node.typeArguments,
+					[_serializeAST(root, ctx.factory)]
+				);
+			}
 		} else {
 			//* CLEAR DECORATORS
-			let kind= node.kind;
-			if(kind===ts.SyntaxKind.PropertyDeclaration || kind===ts.SyntaxKind.MethodDeclaration){
-				let nodeType = typeChecker.getTypeAtLocation(node);
-				let nodeSymbol = nodeType.getSymbol();
-				let parseDirectives= _getDirectives(factory, typeChecker, importTokens, node, nodeSymbol);
-				let decorators= undefined;
-				if(parseDirectives.ignore)
-					decorators= node.decorators?.filter(e=> e.getText()!==ignoreToken);
-				if(ts.isMethodDeclaration(node)){
-					node= factory.createMethodDeclaration(decorators, node.modifiers, node.asteriskToken, node.name, node.questionToken, node.typeParameters, node.parameters, node.type, node.body);
-				} else if(ts.isPropertyDeclaration(node)){
-					node= factory.createPropertyDeclaration(decorators, node.modifiers, node.name, node.questionToken || node.exclamationToken, node.type, node.initializer);
+			let decorators= node.decorators;
+			if(decorators){
+				let filteredDecorators= decorators.filter(function(e){
+					var t= e.getText();
+					return t!== ignoreToken && t!== tsModelToken && t!== assertToken
+				});
+				if(filteredDecorators.length != decorators.length){
+					if(ts.isClassDeclaration(node)){
+						node= factory.createClassDeclaration(filteredDecorators, node.modifiers, node.name, node.typeParameters, node.heritageClauses, node.members);
+					} else if(ts.isMethodDeclaration(node)){
+						node= factory.createMethodDeclaration(filteredDecorators, node.modifiers, node.asteriskToken, node.name, node.questionToken, node.typeParameters, node.parameters, node.type, node.body);
+					} else if(ts.isPropertyDeclaration(node)){
+						node= factory.createPropertyDeclaration(filteredDecorators, node.modifiers, node.name, node.questionToken || node.exclamationToken, node.type, node.initializer);
+					} else {
+						console.warn(`---- unsupported kind: ${ts.SyntaxKind[node.kind]}`);
+					}
 				}
-				//* Visit each child
-				node= ts.visitEachChild(node, _visitor, ctx);
-			} else if(ts.isClassDeclaration(node)){
-				let nodeType = typeChecker.getTypeAtLocation(node);
-				let nodeSymbol = nodeType.getSymbol();
-				let parseDirectives= _getDirectives(factory, typeChecker, importTokens, node, nodeSymbol);
-				if(parseDirectives.tsModel){
-					node= factory.createClassDeclaration(undefined, node.modifiers, node.name, node.typeParameters, node.heritageClauses, node.members );
-					//* Visit each child
-					node= ts.visitEachChild(node, _visitor, ctx);
-				}
-			} else {
-				//* Visit each child
-				node= ts.visitEachChild(node, _visitor, ctx);
 			}
+			//* Visit each child
+			node= ts.visitEachChild(node, _visitor, ctx);
 		}
 		return node;
 	}
 }
 
-/** Common AST serialize */
-function _astSerializeCommon(factory:ts.NodeFactory, prop: ModelNode){
-	var nodeProperties: ts.ObjectLiteralElementLike[]= [
-		factory.createPropertyAssignment( factory.createIdentifier("name"), prop.name==null? factory.createIdentifier("undefined") : factory.createStringLiteral(prop.name)),
-		factory.createPropertyAssignment( factory.createIdentifier("kind"), factory.createNumericLiteral(prop.kind)),
-		factory.createPropertyAssignment( factory.createIdentifier("jsDoc"), prop.jsDoc==null? factory.createIdentifier("undefined") : factory.createStringLiteral(prop.jsDoc)),
-		factory.createPropertyAssignment(
-			factory.createIdentifier("directives"),
-			prop.directives==null?
-				factory.createIdentifier("undefined")
-				: factory.createArrayLiteralExpression(prop.directives, PRETTY)
-		)
-	]
-	switch(prop.kind){
-		case ModelKind.PLAIN_OBJECT:
-			nodeProperties.push(
-				// isClass
-				factory.createPropertyAssignment(factory.createIdentifier("isClass"), prop.isClass ? factory.createTrue(): factory.createFalse())
-			);
-		case ModelKind.FIELD:
-			nodeProperties.push(
-				factory.createPropertyAssignment(factory.createIdentifier("required"), (prop as ObjectField).required ? factory.createTrue(): factory.createFalse())
-			);
-			break;
-		case ModelKind.METHOD:
+/** Serialize AST */
+function _serializeAST<T extends ModelNode|RootModel>(root: T, factory: ts.NodeFactory): ts.ObjectLiteralExpression{
+	var nodeProperties: ts.ObjectLiteralElementLike[]= [];
+	var result= factory.createObjectLiteralExpression(nodeProperties, PRETTY)
+	const  results: ts.ObjectLiteralElementLike[][]= [nodeProperties];
+	const queue: (ModelNode|RootModel)[]= [root];
+	var i=0;
+	while(i<queue.length){
+		var node= queue[i];
+		nodeProperties= results[i++];
+		// Common fields
+		nodeProperties.push(
+			factory.createPropertyAssignment( factory.createIdentifier("name"), node.name==null? factory.createIdentifier("undefined") : factory.createStringLiteral(node.name)),
+			factory.createPropertyAssignment( factory.createIdentifier("kind"), factory.createNumericLiteral(node.kind)),
+			factory.createPropertyAssignment( factory.createIdentifier("jsDoc"), node.jsDoc==null? factory.createIdentifier("undefined") : factory.createStringLiteral(node.jsDoc)),
+			factory.createPropertyAssignment(
+				factory.createIdentifier("directives"),
+				node.directives==null?
+					factory.createIdentifier("undefined")
+					: factory.createArrayLiteralExpression(node.directives.map(e=> factory.createIdentifier(e)), PRETTY)
+			)
+		);
+		// Add children
+		if((node as ModelNodeWithChilds).children){
+			let arrFields: ts.Expression[]= [];
 			nodeProperties.push(
 				factory.createPropertyAssignment(
-					factory.createIdentifier("method"),
-					factory.createIdentifier(prop.method)
+					factory.createIdentifier("children"),
+					factory.createArrayLiteralExpression( arrFields, PRETTY )
 				)
 			);
-			// var method= prop.method;
-			// nodeProperties.push(
-			// 	factory.createMethodDeclaration(
-			// 		undefined, //method.decorators,
-			// 		undefined, //method.modifiers,
-			// 		undefined,
-			// 		'method',
-			// 		undefined,
-			// 		undefined,
-			// 		method.parameters,
-			// 		undefined,
-			// 		method.body
-			// 	)
-			// );
-			break;
-		case ModelKind.REF:
-			nodeProperties.push(
-				factory.createPropertyAssignment(factory.createIdentifier("value"), factory.createStringLiteral(prop.value))
-			);
-			break;
-		case ModelKind.CONST:
-		case ModelKind.ENUM_MEMBER:
-			nodeProperties.push(
-				factory.createPropertyAssignment(factory.createIdentifier("value"), factory.createIdentifier(prop.value ?? "undefined"))
-			);
-			break;
-		case ModelKind.SCALAR:
-			nodeProperties.push(
-				factory.createPropertyAssignment(factory.createIdentifier("parser"), prop.parser)
-			);
-			break;
-		case ModelKind.UNION:
-			nodeProperties.push(
-				factory.createPropertyAssignment(factory.createIdentifier("resolveType"), prop.resolveType)
-			);
-			break;
-		case ModelKind.DIRECTIVE:
-			nodeProperties.push(
-				factory.createPropertyAssignment( factory.createIdentifier("resolver"), prop.resolver)
-			);
-	}
-	return nodeProperties;
-}
-/** Serialize AST */
-function _serializeAST(root: RootModel, ctx: ts.TransformationContext): ts.Expression{
-	const factory= ctx.factory;
-	var fields:ts.Expression[]|undefined;
-	const results: ts.Expression[][]= [[]];
-	const queue: ModelNode[][]= [root.children];
-	//-------
-	var i, props= root.children;
-	var j,jLen, prop, fieldNodes;
-	for(i=0; i<queue.length; ++i){
-		props= queue[i];
-		fieldNodes= results[i];
-		for(j=0, jLen= props.length; j<jLen; ++j)
-			if(prop= props[j]){
-				// Common fields
-				var nodeProperties: ts.ObjectLiteralElementLike[]= _astSerializeCommon(factory, prop);
-				// Add children
-				if((prop as ModelNodeWithChilds).children){
-					fields= [];
-					nodeProperties.push(
-						factory.createPropertyAssignment(
-							factory.createIdentifier("children"),
-							factory.createArrayLiteralExpression( fields, PRETTY )
-						)
-					);
-					queue.push((prop as ModelNodeWithChilds).children);
-					results.push(fields);
+			(node as ModelNodeWithChilds).children.forEach(e=>{
+				if(e==null){
+					arrFields.push(factory.createIdentifier('undefined'));
+				} else {
+					let objF: ts.ObjectLiteralElementLike[]= [];
+					arrFields.push(factory.createObjectLiteralExpression(objF, PRETTY));
+					queue.push(e);
+					results.push(objF);
 				}
-				// Add to parent
-				fieldNodes.push(factory.createObjectLiteralExpression(nodeProperties, PRETTY));
-			} else {
-				fieldNodes.push(factory.createIdentifier('undefined'));
-			}
+			});
+		}
+		// Custom fields
+		switch(node.kind){
+			/** Root model */
+			case ModelKind.ROOT:
+				break;
+			case ModelKind.PLAIN_OBJECT:
+				nodeProperties.push(
+					factory.createPropertyAssignment(factory.createIdentifier("isClass"), node.isClass ? factory.createTrue(): factory.createFalse())
+				);
+				break;
+			case ModelKind.FIELD:
+				nodeProperties.push(
+					factory.createPropertyAssignment(factory.createIdentifier("required"), (node as ObjectField).required ? factory.createTrue(): factory.createFalse())
+				);
+				nodeProperties.push(
+					factory.createPropertyAssignment(factory.createIdentifier("input"), factory.createIdentifier((node as ObjectField).input || 'undefined'))
+				);
+				if((node as ObjectField).resolver){
+					let fieldObjFields: ts.ObjectLiteralElementLike[]= [];
+					nodeProperties.push(
+						factory.createPropertyAssignment(factory.createIdentifier("resolver"), factory.createObjectLiteralExpression(fieldObjFields, PRETTY))
+					);
+					queue.push((node as ObjectField).resolver!);
+					results.push(fieldObjFields);
+				} else {
+					nodeProperties.push(
+						factory.createPropertyAssignment(factory.createIdentifier("resolver"), factory.createIdentifier('undefined'))
+					);
+				}
+				break;
+			case ModelKind.METHOD:
+				nodeProperties.push(
+					factory.createPropertyAssignment( factory.createIdentifier("method"), factory.createIdentifier(node.method) )
+				);
+				break;
+			case ModelKind.REF:
+				nodeProperties.push(
+					factory.createPropertyAssignment(factory.createIdentifier("value"), factory.createStringLiteral(node.value))
+				);
+				break;
+			case ModelKind.CONST:
+			case ModelKind.ENUM_MEMBER:
+				nodeProperties.push(
+					factory.createPropertyAssignment(factory.createIdentifier("value"), factory.createIdentifier(node.value ?? "undefined"))
+				);
+				break;
+			case ModelKind.SCALAR:
+				nodeProperties.push(
+					factory.createPropertyAssignment(factory.createIdentifier("parser"), node.parser)
+				);
+				break;
+			case ModelKind.UNION:
+				nodeProperties.push(
+					factory.createPropertyAssignment(factory.createIdentifier("resolveType"), node.resolveType)
+				);
+				break;
+			// case ModelKind.DIRECTIVE:
+			// 	nodeProperties.push(
+			// 		factory.createPropertyAssignment( factory.createIdentifier("resolver"), prop.resolver)
+			// 	);
+		}
 	}
-	//* Directives
-	const directiveFields=[];
-	const directives= root.directives;
-	for(let k in directives) if(typeof k === 'string' && directives.hasOwnProperty(k)){
-		prop= directives[k];
-		directiveFields.push(factory.createPropertyAssignment(
-			factory.createIdentifier(k),
-			factory.createObjectLiteralExpression(_astSerializeCommon(factory, prop), PRETTY)
-		));
-	}
-	//* RETURN
-	return factory.createObjectLiteralExpression([
-		//Models
-		factory.createPropertyAssignment(
-			factory.createIdentifier("children"),
-			factory.createArrayLiteralExpression( results[0], PRETTY )
-		),
-		// directives
-		factory.createPropertyAssignment(
-			factory.createIdentifier("directives"),
-			factory.createObjectLiteralExpression(directiveFields, PRETTY)
-		)
-	], PRETTY);
-	//return ctx.factory.createIdentifier(JSON.stringify(root));
+	return result;
 }
 
 /** Child child with a kind */
@@ -644,7 +713,7 @@ function _getDirectives(factory: ts.NodeFactory, typeChecker: ts.TypeChecker, im
 				jsDocArr.push(`@${childText}`); // jsDoc
 				switch(dName){
 					case assertToken:
-						directives.push(factory.createIdentifier(childText));
+						directives.push(childText);
 						break;
 					case tsModelToken:
 						result.tsModel= true;
@@ -672,7 +741,7 @@ function _getDirectives(factory: ts.NodeFactory, typeChecker: ts.TypeChecker, im
 					}
 					switch(dName){
 						case assertToken:
-							directives.push(expression);
+							directives.push(expression.getText());
 							break;
 						case tsModelToken:
 							result.tsModel= true;
