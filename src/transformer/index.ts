@@ -1,4 +1,5 @@
-import { ModelKind, RootModel, ModelNode, ObjectField, ModelNodeWithChilds, ModelBaseNode, ImportTokens } from "@src/schema/model.js";
+import { ModelKind, RootModel, ModelNode, ObjectField, ModelNodeWithChilds, ModelBaseNode, ImportTokens, ModelRefNode, ModelPromiseNode } from "@src/schema/model.js";
+import { nodeTypeKind, Visitor } from "@src/utils/utils.js";
 import ts from "typescript";
 // import treefy from 'treeify';
 
@@ -9,6 +10,7 @@ const PRETTY= true;
 /** visitor signature */
 type visitEachChildVisitorSignature<T>= (node: T, parentDescriptor: ModelNode|undefined, _visite: VisiteEachNodeCb<T>, addEntityToParse: (entity: ts.TypeNode)=> string)=> void
 type VisiteEachNodeCb<T>= (nodes: T|undefined|(T|undefined)[], parentDescriptor: ModelNode|undefined)=> void;
+
 
 /**
  * Transforme typescript interfaces and classes to Models
@@ -45,31 +47,21 @@ export function createTransformer(program: ts.Program) {
 	}
 }
 
-/** Waiting queue for parsing interfaces, classes and enum */
-interface wParseQueueEntry{
-	node: ts.Node
-	directives?: ParseDirectivesReturn
-	/** Distinguish methods if are input or output resolvers */
-	isInput:	boolean
-}
-
 /** Visitor */
 function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts.SourceFile, root: RootModel): ts.Visitor {
 	const factory= ctx.factory;
 	const typeChecker= program.getTypeChecker();
 	// Import tokens
 	const importTokens= root._tokens;
-	/** Interfaces & classes parsing queue */
-	const wParseQueue: wParseQueueEntry[]= [];
-	/** Interfaces without explicite parsing request */
-	const implicitWParseMap: Map<string, wParseQueueEntry[]>= new Map();
+	// Entity parser visitor (classes and interfaces)
+	const entityVisitor= new Visitor();
 
 	/** Return visitor */
 	return function(node: ts.Node){
 		// Step 1: parse tree
-		visiteEachChild<ts.Node>(node, _nodeVisitor);
+		_nodeVisitor(node);
 		// Step 2: parse entities
-		visiteEachChild<wParseQueueEntry>(wParseQueue, _parseEntities);
+		_parseEntities();
 		return node;
 	}
 
@@ -140,354 +132,366 @@ function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts
 	}
 
 	/** Visite each node */
-	function _nodeVisitor(node: ts.Node, parentDescriptor: ModelNode|undefined, addVisiteNodes: VisiteEachNodeCb<ts.Node>){
-		// get type
+	function _nodeVisitor(rootNode: ts.Node){
+		// vars
 		var parseDirectives: ParseDirectivesReturn;
 		var nodeType;
 		var nodeSymbol;
-		// Switch kind
-		switch(node.kind){
-			/** parse Imports */
-			case ts.SyntaxKind.ImportDeclaration:
-				if((node as ts.ImportDeclaration).moduleSpecifier.getText()===PACKAGE_NAME){
-					deepChildOfKind(node, ts.SyntaxKind.ImportSpecifier, function(n: ts.ImportSpecifier){
-						var tName= n.getFirstToken()?.getText();
-						var tValue= n.getLastToken()?.getText();
-						if(tName && importTokens.hasOwnProperty(tName))
-							//@ts-ignore
-							importTokens[tName]= tValue;
-					});
-				}
-				break;
-			/** Class && interfaces */
-			case ts.SyntaxKind.InterfaceDeclaration:
-			case ts.SyntaxKind.ClassDeclaration:
-			case ts.SyntaxKind.TypeLiteral:
-			case ts.SyntaxKind.EnumDeclaration:
-			case ts.SyntaxKind.TypeAliasDeclaration:
-				// jsDirectives
-				nodeType = typeChecker.getTypeAtLocation(node);
-				nodeSymbol = nodeType.getSymbol();
-				parseDirectives= _getDirectives(factory, typeChecker, importTokens, node, nodeSymbol);
-				if(!parseDirectives.ignore){
-					// Check if has "ResolversOf" or "InputResolversOf"
-					let isInput= false;
-					let hasResolvers= false;
-					if(ts.isClassDeclaration(node) && node.heritageClauses){
-						let heritageClauses= node.heritageClauses;
-						rLoop: for (let i = 0, len= heritageClauses.length; i < len; i++) {
-							const element = heritageClauses[i];
-							let types= element.types;
-							for (let j = 0, jlen= types.length; j < jlen; j++) {
-								let txt= types[j].expression.getText();
-								if(txt ===  importTokens.ResolversOf){
-									hasResolvers= true;
-									break rLoop;
-								} else if(txt=== importTokens.InputResolversOf){
-									isInput= hasResolvers= true;
-									break rLoop;
+		const visitor: Visitor = new Visitor(rootNode);
+		const visitorIt= visitor.it();
+		
+		while(true){
+			// Get next entry
+			var nxt = visitorIt.next();
+			if(nxt.done) break;
+			var { node, parentDescriptor}= nxt.value;
+			// Switch kind
+			switch (node.kind) {
+				/** parse Imports */
+				case ts.SyntaxKind.ImportDeclaration:
+					if ((node as ts.ImportDeclaration).moduleSpecifier.getText() === PACKAGE_NAME) {
+						deepChildOfKind(node, ts.SyntaxKind.ImportSpecifier, function (n: ts.ImportSpecifier) {
+							var tName = n.getFirstToken()?.getText();
+							var tValue = n.getLastToken()?.getText();
+							if (tName && importTokens.hasOwnProperty(tName))
+								//@ts-ignore
+								importTokens[tName] = tValue;
+						});
+					}
+					break;
+				/** Class && interfaces */
+				case ts.SyntaxKind.InterfaceDeclaration:
+				case ts.SyntaxKind.ClassDeclaration:
+				case ts.SyntaxKind.TypeLiteral:
+				case ts.SyntaxKind.EnumDeclaration:
+				case ts.SyntaxKind.TypeAliasDeclaration:
+					// jsDirectives
+					nodeType = typeChecker.getTypeAtLocation(node);
+					nodeSymbol = nodeType.getSymbol();
+					parseDirectives = _getDirectives(factory, typeChecker, importTokens, node, nodeSymbol);
+					if (!parseDirectives.ignore) {
+						// Check if has "ResolversOf" or "InputResolversOf"
+						let isInput = false;
+						let hasResolvers = false;
+						if (ts.isClassDeclaration(node) && node.heritageClauses) {
+							let heritageClauses = node.heritageClauses;
+							rLoop: for (let i = 0, len = heritageClauses.length; i < len; i++) {
+								const element = heritageClauses[i];
+								let types = element.types;
+								for (let j = 0, jlen = types.length; j < jlen; j++) {
+									let txt = types[j].expression.getText();
+									if (txt === importTokens.ResolversOf) {
+										hasResolvers = true;
+										break rLoop;
+									} else if (txt === importTokens.InputResolversOf) {
+										isInput = hasResolvers = true;
+										break rLoop;
+									}
 								}
 							}
 						}
-					}
-					// if is a model to parse
-					if(hasResolvers || parseDirectives.tsModel){
-						// Add to parsing queue
-						wParseQueue.push({
-							node:		node,
-							directives:	parseDirectives,
-							isInput:	isInput
-						});
-					} else {
-						// Check for waiting parse
-						let interName= (node as ts.InterfaceDeclaration).name.getText();
-						let mp= implicitWParseMap.get(interName);
-						if(!mp){
-							mp= [];
-							implicitWParseMap.set(interName, mp);
+						// if is a model to parse
+						if (hasResolvers || parseDirectives.tsModel) {
+							// Add to parsing queue
+							entityVisitor.push(node, undefined, isInput, parseDirectives);
 						}
-						mp.push({
-							node:		node as ts.InterfaceDeclaration,
-							directives:	parseDirectives,
-							isInput:	false
-						});
 					}
-				}
-				break;
-			/** Variable statement: create new scalar, union, ... */
-			case ts.SyntaxKind.VariableStatement:
-				nodeType = typeChecker.getTypeAtLocation(node);
-				nodeSymbol = nodeType.getSymbol();
-				if(!(parseDirectives = _getDirectives(factory, typeChecker, importTokens, node, nodeSymbol)).ignore)
-					deepChildOfKind(node, ts.SyntaxKind.VariableDeclaration, function(node){
-						_parseModelDirective(node as ts.VariableDeclaration, root, parseDirectives);
-					});
-				break;
-			/** By default add all childs for check */
-			default:
-				addVisiteNodes(node.getChildren(), undefined);
+					break;
+				/** Variable statement: create new scalar, union, ... */
+				case ts.SyntaxKind.VariableStatement:
+					nodeType = typeChecker.getTypeAtLocation(node);
+					nodeSymbol = nodeType.getSymbol();
+					if (!(parseDirectives = _getDirectives(factory, typeChecker, importTokens, node, nodeSymbol)).ignore)
+						deepChildOfKind(node, ts.SyntaxKind.VariableDeclaration, function (node) {
+							_parseModelDirective(node as ts.VariableDeclaration, root, parseDirectives);
+						});
+					break;
+				/** By default add all childs for check */
+				default:
+					visitor.push(node.getChildren());
+			}
 		}
 	}
 
 	/** Parse entities */
-	function _parseEntities({node, directives, isInput}: wParseQueueEntry, parentDescriptor: ModelNode|undefined, addVisiteNodes: VisiteEachNodeCb<wParseQueueEntry>){
-		var currentNode: ModelNode, nodeType;
-		switch(node.kind){
-			case ts.SyntaxKind.InterfaceDeclaration:
-			case ts.SyntaxKind.ClassDeclaration:
-				// jsDirectives
-				nodeType = typeChecker.getTypeAtLocation(node);
-				currentNode= _getEntity(node as ts.InterfaceDeclaration, directives);
-				// Parse each property
-				nodeType.getProperties().forEach(function({valueDeclaration}){
-					if(valueDeclaration)
-						addVisiteNodes({node: valueDeclaration, isInput}, currentNode);
-				});
-				break;
-			/** Enumeration */
-			case ts.SyntaxKind.EnumDeclaration:
-				// jsDirectives
-				// nodeType = typeChecker.getTypeAtLocation(node);
-				// current node
-				currentNode= _getEntity(node as ts.EnumDeclaration, directives);
-				// Go through each child
-				node.getChildren().forEach(function(e){
-					addVisiteNodes({node: e, isInput}, currentNode);
-				});
-				break;
-			/** Type literal */
-			case ts.SyntaxKind.TypeLiteral:
-				if(parentDescriptor){
-					currentNode = {
-						name:		(node as any).name?.getText(),
-						kind:		ModelKind.PLAIN_OBJECT,
-						jsDoc:		undefined,
-						directives:	undefined,
-						children:	[],
-						mapChilds:	{},
-						isClass:	false
-					};
-					(parentDescriptor as ObjectField).children.push(currentNode);
-				}
-				break;
-			/** Property signature */
-			case ts.SyntaxKind.PropertySignature:
-				// nodeType = typeChecker.getTypeAtLocation(node);
-				if(parentDescriptor){
-					if (parentDescriptor.kind !== ModelKind.PLAIN_OBJECT)
-						throw new Error(`Expected parent node to be interface or class, got ${ModelKind[parentDescriptor.kind]} at ${node.getText()}`);
-					// Current node
-					currentNode = {
-						kind:		ModelKind.FIELD,
-						name:		(node as ts.PropertySignature).name.getText(),
-						jsDoc:		directives?.jsDoc,
-						directives:	directives?.directives,
-						required:	!(node as ts.PropertySignature).questionToken,
-						children:	[],
-						resolver:	undefined,
-						input:		undefined
-					};
-					// Add to parent
-					parentDescriptor.children.push(parentDescriptor.mapChilds[currentNode.name!] = currentNode);
-					// Go through childs
-					node.getChildren().forEach(function(e){
-						addVisiteNodes({node: e, isInput}, currentNode);
+	function _parseEntities(){
+		//* Visitor
+		const visitorIt = entityVisitor.it();
+		while(true){
+			var nxt= visitorIt.next();
+			if(nxt.done) break;
+			var { node, parentDescriptor, directives, isInput }= nxt.value;
+			var currentNode: ModelNode, nodeType;
+			//* Switch kind
+			switch(node.kind){
+				case ts.SyntaxKind.InterfaceDeclaration:
+				case ts.SyntaxKind.ClassDeclaration:
+					// jsDirectives
+					nodeType = typeChecker.getTypeAtLocation(node);
+					currentNode= _getEntity(node as ts.InterfaceDeclaration, directives);
+					// Parse each property
+					nodeType.getProperties().forEach(function({valueDeclaration}){
+						if(valueDeclaration)
+							entityVisitor.push(valueDeclaration, currentNode, isInput);
 					});
-				}
-				break;
-			
-			/** Method declaration */
-			case ts.SyntaxKind.MethodDeclaration:
-				// nodeType = typeChecker.getTypeAtLocation(node);
-				if(parentDescriptor){
-					if (parentDescriptor.kind !== ModelKind.PLAIN_OBJECT)
-						throw new Error(`Expected parent node to be interface or class, got ${ModelKind[parentDescriptor.kind]} at ${node.getText()}`);
-					// resolver
-					let resolverMethod: ObjectField['resolver']= undefined;
-					let inputResolver: ObjectField['input']= undefined;
-					let methodName= (node as ts.MethodDeclaration).name.getText();
-					if(isInput){
-						inputResolver= `${parentDescriptor.name}.prototype.${methodName}`;
-					} else {
-						resolverMethod= {
-							kind:		ModelKind.METHOD,
+					break;
+				/** Enumeration */
+				case ts.SyntaxKind.EnumDeclaration:
+					// jsDirectives
+					// nodeType = typeChecker.getTypeAtLocation(node);
+					// current node
+					currentNode= _getEntity(node as ts.EnumDeclaration, directives);
+					// Go through each child
+					entityVisitor.push(node.getChildren(), currentNode, isInput);
+					break;
+				/** Type literal */
+				case ts.SyntaxKind.TypeLiteral:
+					if(parentDescriptor){
+						currentNode = {
+							name:		(node as any).name?.getText(),
+							kind:		ModelKind.PLAIN_OBJECT,
+							jsDoc:		undefined,
+							directives:	undefined,
+							children:	[],
+							mapChilds:	{},
+							isClass:	false
+						};
+						(parentDescriptor as ObjectField).children.push(currentNode);
+					}
+					break;
+				/** Property signature */
+				case ts.SyntaxKind.PropertySignature:
+					// nodeType = typeChecker.getTypeAtLocation(node);
+					if(parentDescriptor){
+						if (parentDescriptor.kind !== ModelKind.PLAIN_OBJECT)
+							throw new Error(`Expected parent node to be interface or class, got ${ModelKind[parentDescriptor.kind]} at ${node.getText()}`);
+						// Current node
+						currentNode = {
+							kind:		ModelKind.FIELD,
+							name:		(node as ts.PropertySignature).name.getText(),
+							jsDoc:		directives?.jsDoc,
+							directives:	directives?.directives,
+							required:	!(node as ts.PropertySignature).questionToken,
+							children:	[],
+							resolver:	undefined,
+							input:		undefined
+						};
+						// Add to parent
+						parentDescriptor.children.push(parentDescriptor.mapChilds[currentNode.name!] = currentNode);
+						// Go through childs
+						entityVisitor.push(node.getChildren(), currentNode, isInput);
+					}
+					break;
+				
+				/** Method declaration */
+				case ts.SyntaxKind.MethodDeclaration:
+					// nodeType = typeChecker.getTypeAtLocation(node);
+					if(parentDescriptor){
+						if (parentDescriptor.kind !== ModelKind.PLAIN_OBJECT)
+							throw new Error(`Expected parent node to be interface or class, got ${ModelKind[parentDescriptor.kind]} at ${node.getText()}`);
+						// resolver
+						let resolverMethod: ObjectField['resolver']= undefined;
+						let inputResolver: ObjectField['input']= undefined;
+						let methodName= (node as ts.MethodDeclaration).name.getText();
+						if(isInput){
+							inputResolver= `${parentDescriptor.name}.prototype.${methodName}`;
+						} else {
+							resolverMethod= {
+								kind:		ModelKind.METHOD,
+								name:		methodName,
+								jsDoc:		directives?.jsDoc,
+								directives:	directives?.directives,
+								// method:		node as ts.MethodDeclaration,
+								method: `${parentDescriptor.name}.prototype.${methodName}`,
+								/** [ResultType, ParamType] */
+								children:	[undefined, undefined],
+							};
+						}
+						// Current node
+						currentNode = {
+							kind:		ModelKind.FIELD,
 							name:		methodName,
 							jsDoc:		directives?.jsDoc,
 							directives:	directives?.directives,
-							// method:		node as ts.MethodDeclaration,
-							method: `${parentDescriptor.name}.prototype.${methodName}`,
-							/** [ResultType, ParamType] */
-							children:	[undefined, undefined],
+							required:	!(node as ts.MethodDeclaration).questionToken,
+							children:	[],
+							resolver:	resolverMethod,
+							input:		inputResolver
+						};
+						// Add to parent
+						parentDescriptor.children.push(parentDescriptor.mapChilds[currentNode.name!] = currentNode);
+						// Go trough childs
+						entityVisitor.push(node.getChildren(), resolverMethod || currentNode, isInput);
+						// Go through arg param
+						if(!isInput){
+							var params = (node as ts.MethodDeclaration).parameters;
+							if (params && params[1])
+								entityVisitor.push(params[1], resolverMethod, isInput);
+						}
+					}
+					break;
+				/** Enum member */
+				case ts.SyntaxKind.EnumMember:
+					// nodeType = typeChecker.getTypeAtLocation(node);
+					if (parentDescriptor) {
+						if (parentDescriptor.kind !== ModelKind.ENUM)
+							throw new Error(`Expected parent node to ENUM, got ${ts.SyntaxKind[node.kind]} at ${node.getStart()}`);
+						// Current node
+						currentNode = {
+							kind:		ModelKind.ENUM_MEMBER,
+							name:		(node as ts.PropertySignature).name.getText(),
+							jsDoc:		directives?.jsDoc,
+							directives:	directives?.directives,
+							required:	true,
+							value:		(function(){
+								var i, len, childs= node.getChildren();
+								for(i=0, len=childs.length; i<len; ++i){
+									if (childs[i].kind === ts.SyntaxKind.FirstAssignment){
+										return childs[i + 1].getText()
+									}
+								}
+							})()
 						};
 					}
-					// Current node
-					currentNode = {
-						kind:		ModelKind.FIELD,
-						name:		methodName,
-						jsDoc:		directives?.jsDoc,
-						directives:	directives?.directives,
-						required:	!(node as ts.MethodDeclaration).questionToken,
-						children:	[],
-						resolver:	resolverMethod,
-						input:		inputResolver
-					};
-					// Add to parent
-					parentDescriptor.children.push(parentDescriptor.mapChilds[currentNode.name!] = currentNode);
-					// Go trough childs
-					let nNode= resolverMethod||currentNode
-					node.getChildren().forEach(function(e){
-						addVisiteNodes({node: e, isInput}, nNode);
-					});
-					// Go through arg param
-					if(!isInput){
-						var params = (node as ts.MethodDeclaration).parameters;
-						if (params && params[1])
-							addVisiteNodes({node: params[1], isInput}, resolverMethod);
+					break;
+				/** Type */
+				case ts.SyntaxKind.TypeAliasDeclaration:
+					// nodeType = typeChecker.getTypeAtLocation(node);
+					console.log('----------------------------------------->> TYPE: ');
+					break;
+				//* Basic Types
+				case ts.SyntaxKind.TypeReference:
+					if (parentDescriptor) {
+						switch (parentDescriptor.kind) {
+							case ModelKind.FIELD:
+							case ModelKind.LIST:
+							case ModelKind.METHOD:
+							case ModelKind.PARAM:
+								parentDescriptor.children[0] = resolveReference(node as ts.TypeReferenceNode, isInput);
+								break;
+							default:
+								console.warn(`>> Escaped ${ts.SyntaxKind[node.kind]} at ${node.getStart()}`);
+						}
 					}
-				}
-				break;
-			/** Enum member */
-			case ts.SyntaxKind.EnumMember:
-				// nodeType = typeChecker.getTypeAtLocation(node);
-				if (parentDescriptor) {
-					if (parentDescriptor.kind !== ModelKind.ENUM)
-						throw new Error(`Expected parent node to ENUM, got ${ts.SyntaxKind[node.kind]} at ${node.getStart()}`);
-					// Current node
-					currentNode = {
-						kind:		ModelKind.ENUM_MEMBER,
-						name:		(node as ts.PropertySignature).name.getText(),
-						jsDoc:		directives?.jsDoc,
-						directives:	directives?.directives,
-						required:	true,
-						value:		(function(){
-							var i, len, childs= node.getChildren();
-							for(i=0, len=childs.length; i<len; ++i){
-								if (childs[i].kind === ts.SyntaxKind.FirstAssignment){
-									return childs[i + 1].getText()
+					break;
+				case ts.SyntaxKind.StringKeyword:
+				case ts.SyntaxKind.BooleanKeyword:
+				case ts.SyntaxKind.NumberKeyword:
+				case ts.SyntaxKind.SymbolKeyword:
+				case ts.SyntaxKind.BigIntKeyword:
+					if(parentDescriptor){
+						switch (parentDescriptor.kind) {
+							case ModelKind.FIELD:
+							case ModelKind.LIST:
+							case ModelKind.METHOD:
+							case ModelKind.PARAM:
+								parentDescriptor.children[0] = {
+									kind: ModelKind.REF,
+									name: undefined,
+									jsDoc: undefined,
+									directives:	undefined,
+									value: node.getText()
 								}
-							}
-						})()
-					};
-				}
-				break;
-			/** Type */
-			case ts.SyntaxKind.TypeAliasDeclaration:
-				// nodeType = typeChecker.getTypeAtLocation(node);
-				console.log('----------------------------------------->> TYPE: ');
-				break;
-			//* Basic Types
-			case ts.SyntaxKind.TypeReference:
-			case ts.SyntaxKind.StringKeyword:
-			case ts.SyntaxKind.BooleanKeyword:
-			case ts.SyntaxKind.NumberKeyword:
-			case ts.SyntaxKind.SymbolKeyword:
-			case ts.SyntaxKind.BigIntKeyword:
-				if(parentDescriptor){
-					switch (parentDescriptor.kind) {
-						case ModelKind.FIELD:
-						case ModelKind.LIST:
-						case ModelKind.METHOD:
-						case ModelKind.PARAM:
-							parentDescriptor.children[0] = {
-								kind: ModelKind.REF,
-								name: undefined,
-								jsDoc: undefined,
-								directives:	undefined,
-								value: node.getText()
-							}
-							break;
-						default:
-							console.warn(`>> Escaped ${ts.SyntaxKind[node.kind]} at ${node.getStart()}`);
+								break;
+							default:
+								console.warn(`>> Escaped ${ts.SyntaxKind[node.kind]} at ${node.getStart()}`);
+						}
 					}
-				}
-				break;
-			/** Array type */
-			case ts.SyntaxKind.ArrayType:
-				if(parentDescriptor){
-					currentNode = {
-						kind:	ModelKind.LIST,
-						name:	undefined,
-						jsDoc:	undefined,
-						directives:	undefined,
-						children: []
+					break;
+				/** Array type */
+				case ts.SyntaxKind.ArrayType:
+					if(parentDescriptor){
+						currentNode = {
+							kind:	ModelKind.LIST,
+							name:	undefined,
+							jsDoc:	undefined,
+							directives:	undefined,
+							children: []
+						}
+						switch (parentDescriptor.kind) {
+							case ModelKind.FIELD:
+							case ModelKind.LIST:
+							case ModelKind.METHOD:
+							case ModelKind.PARAM:
+								parentDescriptor.children[0] = currentNode;
+								break;
+							default:
+								console.warn(`>> Escaped ${ts.SyntaxKind[node.kind]} at ${node.getText()}: ${node.getStart()}`);
+						}
 					}
-					switch (parentDescriptor.kind) {
-						case ModelKind.FIELD:
-						case ModelKind.LIST:
-						case ModelKind.METHOD:
-						case ModelKind.PARAM:
-							parentDescriptor.children[0] = currentNode;
-							break;
-						default:
-							console.warn(`>> Escaped ${ts.SyntaxKind[node.kind]} at ${node.getText()}: ${node.getStart()}`);
+					break;
+				/** Tuple as Multipe types */
+				case ts.SyntaxKind.TupleType:
+					throw new Error(`Tuples are not supported, do you mean multiple types? at: ${node.getText()}: ${node.getStart()}`);
+					break;
+				/** Method param */
+				case ts.SyntaxKind.Parameter:
+					if(parentDescriptor){
+						if (parentDescriptor.kind !== ModelKind.METHOD)
+							throw new Error(`Enexpected param access at ${node.getText()}:${node.getStart()}`);
+						console.log('--- PARAM', (node as ts.ParameterDeclaration).type?.getText())
+						currentNode = {
+							kind: ModelKind.PARAM,
+							name: (node as ts.ParameterDeclaration).name.getText(),
+							jsDoc: undefined,
+							directives:	undefined,
+							children: []
+						};
+						parentDescriptor.children[1] = currentNode;
+						let paramType;
+						if (paramType = (node as ts.ParameterDeclaration).type){
+							entityVisitor.push(paramType, currentNode, true);
+						}
 					}
-				}
-				break;
-			/** Tuple as Multipe types */
-			case ts.SyntaxKind.TupleType:
-				throw new Error(`Tuples are not supported, do you mean multiple types? at: ${node.getText()}: ${node.getStart()}`);
-				break;
-			/** Method param */
-			case ts.SyntaxKind.Parameter:
-				if(parentDescriptor){
-					if (parentDescriptor.kind !== ModelKind.METHOD)
-						throw new Error(`Enexpected param access at ${node.getText()}:${node.getStart()}`);
-					currentNode = {
-						kind: ModelKind.PARAM,
-						name: (node as ts.ParameterDeclaration).name.getText(),
-						jsDoc: undefined,
-						directives:	undefined,
-						children: []
-					};
-					parentDescriptor.children[1] = currentNode;
-				}
-				break;
+					break;
+				/** TODO parsing here  */
+			}
 		}
 	}
-
-	/** Custom visitor process */
-	function visiteEachChild<T>(node: T|T[], visitor: visitEachChildVisitorSignature<T>){
-		const nodeQueue: T[]= Array.isArray(node)? node : [node];
-		const parentQueue: (ModelNode|undefined)[]= Array(nodeQueue.length).fill(undefined);
-		var i= 0, len= nodeQueue.length;
-		function _visite(nodes: T|undefined|(T|undefined)[], parentDescriptor: ModelNode|undefined){
-			if(Array.isArray(nodes)){
-				var j, jLen;
-				for(j=0, jLen= nodes.length; j<jLen; ++j){
-					if(nodes[j]!=null){
-						nodeQueue.push(nodes[j]!);
-						parentQueue.push(parentDescriptor)
-					}
-				}
-			} else if(nodes) {
-				nodeQueue.push(nodes);
-				parentQueue.push(parentDescriptor)
-			}
-			// Update lenght
-			len= nodeQueue.length;
+	/** Add entity to parse */
+	function _addEntityToParse(entity: ts.TypeNode): string {
+		var entityName = entity.getText()!;
+		var entityType: ts.Type, declarations: ts.Declaration[] | undefined;
+		if ((entityType = typeChecker.getTypeAtLocation(entity)) && (declarations = entityType.getSymbol()?.declarations)) {
+			entityVisitor.push(declarations);
 		}
-		while(i<len){
-			visitor(nodeQueue[i], parentQueue[i], _visite, _addEntityToParse);
-			++i;
-		}
-
-		/** Add entity to parse */
-		function _addEntityToParse(entity: ts.TypeNode): string{
-			var entityName= entity.getText()!;
-			var entityType: ts.Type, declaration: ts.Declaration | undefined;
-			console.log('--- add entity: ', entityName)
-			var entityType: ts.Type, declarations: ts.Declaration[] | undefined;
-			if((entityType= typeChecker.getTypeAtLocation(entity)) && (declarations= entityType.getSymbol()?.declarations)){
-				if(declarations.length===1){
-					console.log('dec---:', declarations[0].getText())
-					_visite({node: declarations[0], isInput: false}, undefined); ///------------------- here
-				} else {
-					console.log('--- Enexpected declarations!')
-				}
-			}
-			return entityName;
-		}
+		return entityName;
 	}
+	/** Resolve refrerence */
+	function resolveReference(node: ts.TypeReferenceNode, isInput?: boolean): ModelRefNode|ModelPromiseNode {
+		var nType= typeChecker.getTypeAtLocation(node);
+		var nName = nType.getSymbol()?.name;
+		var cNode: ModelRefNode | ModelPromiseNode;
+		if(nName === 'Promise'){
+			// Promise
+			cNode= {
+				kind: ModelKind.PROMISE,
+				name: undefined,
+				jsDoc: undefined,
+				directives: undefined,
+				children: []
+			};
+			entityVisitor.push(node.getChildren(), cNode, isInput, undefined);
+		} else {
+			nName ??= node.getText();
+			if (node.typeArguments?.length){
+				// Generic type
+				if (!root.mapChilds[nName])
+					entityVisitor.push({
+						kind:	nodeTypeKind,
+						name:	nName,
+						nType:	nType
+					}, undefined, false);
+			}
+			cNode = {
+				kind: ModelKind.REF,
+				name: undefined,
+				jsDoc: undefined,
+				directives: undefined,
+				value: nName
+			};
+		}
+	return cNode;
 }
 
 /** Insert AST */

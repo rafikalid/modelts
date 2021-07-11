@@ -24,6 +24,9 @@ export enum ModelKind{
 	/** Reference to an other Model node */
 	REF,
 
+	/** Promise */
+	PROMISE,
+
 	/** Field */
 	FIELD,
 
@@ -44,7 +47,7 @@ export enum ModelKind{
 }
 
 /** Model node */
-export type ModelNode= ModelObjectNode | ConstNode | ModelEnumNode | EnumMember | ModelListNode | ModelRefNode | ModelUnionNode | ObjectField | ModelMethod | ModelParam | ModelScalarNode<any>
+export type ModelNode = ModelObjectNode | ConstNode | ModelEnumNode | EnumMember | ModelListNode | ModelRefNode | ModelUnionNode | ObjectField | ModelMethod | ModelParam | ModelScalarNode<any> | ModelPromiseNode
 
 /** Model node AST */
 export interface ModelBaseNode{
@@ -65,6 +68,11 @@ export interface ConstNode extends ModelBaseNode{
 /** Nodes with childs */
 export interface ModelNodeWithChilds extends ModelBaseNode{
 	children:	ModelNode[]
+}
+
+/** Promise node */
+export interface ModelPromiseNode extends ModelNodeWithChilds{
+	kind: ModelKind.PROMISE
 }
 
 /** Object node */
