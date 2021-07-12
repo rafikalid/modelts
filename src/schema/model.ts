@@ -96,7 +96,7 @@ export interface ModelListNode extends ModelNodeWithChilds{
 /** Union of multiple kinds */
 export interface ModelUnionNode extends ModelBaseNode{
 	kind:		ModelKind.UNION
-	resolveType:	ts.ObjectLiteralExpression
+	resolveType:	string
 }
 
 /** Reference */
@@ -175,5 +175,5 @@ export interface ModelParam extends ModelNodeWithChilds{
 /** Scalar node */
 export interface ModelScalarNode<T> extends ModelBaseNode{
 	kind:	ModelKind.SCALAR
-	parser: ts.ObjectLiteralExpression
+	parser: string
 }

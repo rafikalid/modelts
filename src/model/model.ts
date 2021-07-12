@@ -1,4 +1,5 @@
-import { ModelNode, RootModel } from "@src/schema/model";
+import { ModelKind, ModelNode, RootModel } from "@src/schema/model";
+import { glob } from "glob";
 
 const DEFINE_SCALAR_NAME_REGEX= /^\w{,50}$/;
 
@@ -40,4 +41,32 @@ export class Model{
 	// 	}
 	// 	ast.children.push(ast.mapChilds[name]= scalar);
 	// }
+
+	/** Create schema from files */
+	static async loadFromFiles(pathPattern:string){
+		// Load files
+		const files: string[]= await new Promise(function(res, rej){
+			glob(pathPattern, function(er, files){
+				if(er) rej(er)
+				else res(files);
+			});
+		});
+		// load data
+		const children=[];
+		const mapChilds= {};
+		// const root: RootModel= {
+		// 	kind: ModelKind.ROOT,
+		// 	name: undefined,
+		// 	jsDoc: undefined,
+		// 	directives: undefined,
+		// 	children: [],
+		// 	mapChilds: {}
+		// };
+		var i, len, node;
+		for(i=0, len= files.length; i<len; ++i){
+			if(node= (await import(files[i])).model){
+				//---- here
+			}
+		}
+	}
 }

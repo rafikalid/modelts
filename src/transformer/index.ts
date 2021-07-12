@@ -1,5 +1,5 @@
 import { ModelKind, RootModel, ModelNode, ObjectField, ModelNodeWithChilds, ModelBaseNode, ImportTokens, ModelRefNode, ModelPromiseNode, ModelObjectNode } from "@src/schema/model.js";
-import { nodeTypeKind, SymbolTypeNode, Visitor } from "@src/utils/utils.js";
+import { Visitor } from "@src/utils/utils.js";
 import ts from "typescript";
 // import treefy from 'treeify';
 
@@ -54,7 +54,7 @@ function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts
 	// Import tokens
 	const importTokens= root._tokens;
 	// Entity parser visitor (classes and interfaces)
-	const entityVisitor: Visitor<ts.Node | SymbolTypeNode>= new Visitor();
+	const entityVisitor: Visitor<ts.Node>= new Visitor();
 
 	/** Return visitor */
 	return function(node: ts.Node){
@@ -220,7 +220,7 @@ function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts
 		while(true){
 			var nxt= visitorIt.next();
 			if(nxt.done) break;
-			var { node, parentDescriptor, directives, isInput }= nxt.value;
+			var { node, parentDescriptor, directives, isInput, generics }= nxt.value;
 			var currentNode: ModelNode, nodeType;
 			//* Switch kind
 			switch(node.kind){
@@ -232,7 +232,7 @@ function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts
 					// Parse each property
 					nodeType.getProperties().forEach(function({valueDeclaration}){
 						if(valueDeclaration)
-							entityVisitor.push(valueDeclaration, currentNode, isInput);
+							entityVisitor.push(valueDeclaration, currentNode, isInput, undefined, generics);
 					});
 					break;
 				/** Enumeration */
@@ -242,7 +242,7 @@ function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts
 					// current node
 					currentNode= _getEntity(node as ts.EnumDeclaration, directives);
 					// Go through each child
-					entityVisitor.push(node.getChildren(), currentNode, isInput);
+					entityVisitor.push(node.getChildren(), currentNode, isInput, undefined, generics);
 					break;
 				/** Type literal */
 				case ts.SyntaxKind.TypeLiteral:
@@ -261,6 +261,7 @@ function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts
 					break;
 				/** Property signature */
 				case ts.SyntaxKind.PropertySignature:
+				case ts.SyntaxKind.PropertyDeclaration:
 					// nodeType = typeChecker.getTypeAtLocation(node);
 					if(parentDescriptor){
 						if (parentDescriptor.kind !== ModelKind.PLAIN_OBJECT)
@@ -279,7 +280,7 @@ function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts
 						// Add to parent
 						parentDescriptor.children.push(parentDescriptor.mapChilds[currentNode.name!] = currentNode);
 						// Go through childs
-						entityVisitor.push(node.getChildren(), currentNode, isInput);
+						entityVisitor.push(node.getChildren(), currentNode, isInput, undefined, generics);
 					}
 					break;
 				
@@ -326,7 +327,7 @@ function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts
 						if(!isInput){
 							var params = (node as ts.MethodDeclaration).parameters;
 							if (params && params[1])
-								entityVisitor.push(params[1], resolverMethod, isInput);
+								entityVisitor.push(params[1], resolverMethod, isInput, undefined, generics);
 						}
 					}
 					break;
@@ -367,7 +368,7 @@ function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts
 							case ModelKind.LIST:
 							case ModelKind.METHOD:
 							case ModelKind.PARAM:
-								parentDescriptor.children[0] = resolveReference(node as ts.TypeReferenceNode, isInput);
+								parentDescriptor.children[0] = resolveReference(node as ts.TypeReferenceNode, isInput, generics);
 								break;
 							default:
 								console.warn(`>> Escaped ${ts.SyntaxKind[node.kind]} at ${node.getStart()}`);
@@ -419,7 +420,7 @@ function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts
 								console.warn(`>> Escaped ${ts.SyntaxKind[node.kind]} at ${node.getText()}: ${node.getStart()}`);
 						}
 						// childs
-						entityVisitor.push(node.getChildren(), currentNode, isInput);
+						entityVisitor.push(node.getChildren(), currentNode, isInput, undefined, generics);
 					}
 					break;
 				/** Tuple as Multipe types */
@@ -441,55 +442,56 @@ function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts
 						parentDescriptor.children[1] = currentNode;
 						let paramType;
 						if (paramType = (node as ts.ParameterDeclaration).type){
-							entityVisitor.push(paramType, currentNode, true);
+							entityVisitor.push(paramType, currentNode, true, undefined, generics);
 						}
 					}
 					break;
 				/** Prepared references */
-				case nodeTypeKind:
-					// Create entity
-					if(!(currentNode= root.mapChilds[node.name])){
-						nodeType= node.nType;
-						currentNode= {
-							name:		node.name,
-							kind:		ModelKind.PLAIN_OBJECT,
-							jsDoc:		nodeType.symbol?.getDocumentationComment(typeChecker).map(e=> e.text).join("\n"),
-							directives:	undefined,
-							children:	[],
-							mapChilds:	{},
-							isClass:	nodeType.isClass()
-						};
-						root.children.push(root.mapChilds[node.name]= currentNode);
-						// Parse each property
-						let typeArgs: ts.TypeNode[]= [];
-						node.node.typeArguments?.forEach(a=>{
-							// parse this type
-							resolveReference(a as ts.TypeReferenceNode, isInput);
-							// add type
-							typeArgs.push(a);
-						});
-						// list type args
-						let aliasType= (nodeType.symbol.getDeclarations()![0] as ts.InterfaceDeclaration).typeParameters!.map(p=> p.getText())
-						if(aliasType.length !== typeArgs.length)
-							throw new Error(`Enexpected generic agrs count at: ${node.node.getText()}`);
-						// go through properties
-						nodeType.getProperties().forEach(function({valueDeclaration: d}){
-							if(d){
-								// check name
-								if(ts.isPropertySignature(d)){
-									let i= aliasType?.indexOf(d.type?.getText()!);
-									if(i!>=0){
-										let t= factory.createPropertyDeclaration(
-											d.decorators, d.modifiers, d.name, d.questionToken, typeArgs[i!], d.initializer);
-										entityVisitor.push(t, currentNode, isInput);
-									} else throw new Error(`Could not find alias type: ${d.type?.getText()} at ${d.getText()}`);
-								} else {
-									entityVisitor.push(d, currentNode, isInput);
-								}
-							}
-						});
-					}
-					break;
+				// case nodeTypeKind:
+				// 	// Create entity
+				// 	if(!(currentNode= root.mapChilds[node.name])){
+				// 		nodeType= node.nType;
+				// 		currentNode= {
+				// 			name:		node.name,
+				// 			kind:		ModelKind.PLAIN_OBJECT,
+				// 			jsDoc:		nodeType.symbol?.getDocumentationComment(typeChecker).map(e=> e.text).join("\n"),
+				// 			directives:	undefined,
+				// 			children:	[],
+				// 			mapChilds:	{},
+				// 			isClass:	nodeType.isClass()
+				// 		};
+				// 		root.children.push(root.mapChilds[node.name]= currentNode);
+				// 		// Parse each property
+				// 		let typeArgs: ts.TypeNode[]= [];
+				// 		node.node.typeArguments?.forEach(a=>{
+				// 			// parse this type
+				// 			resolveReference(a as ts.TypeReferenceNode, isInput);
+				// 			// add type
+				// 			typeArgs.push(a);
+				// 		});
+				// 		// list type args
+				// 		let aliasTypes= (nodeType.symbol.getDeclarations()![0] as ts.InterfaceDeclaration).typeParameters!.map(p=> p.getText())
+				// 		if(aliasTypes.length !== typeArgs.length)
+				// 			throw new Error(`Enexpected generic agrs count at: ${node.node.getText()}`);
+				// 		// go through properties
+				// 		nodeType.getProperties().forEach(function({valueDeclaration: d}){
+				// 			if(d){
+				// 				// check name
+				// 				let i: number;
+				// 				if(ts.isPropertySignature(d) && d.type){
+				// 					var typeNode= _resolveGenericType(d.type, aliasTypes, typeArgs);
+				// 					// if(typeNode !== d.type){
+				// 					// 	d= factory.createPropertyDeclaration(
+				// 					// 		d.decorators, d.modifiers, d.name, d.questionToken, typeNode, d.initializer);
+				// 					// }
+				// 				} else {
+				// 					throw new Error(`Enexpected generic kind: ${ts.SyntaxKind[d.kind]} at ${d.getText()}`);
+				// 				}
+				// 				entityVisitor.push(d!, currentNode, isInput);
+				// 			}
+				// 		});
+				// 	}
+				// 	break;
 			}
 		}
 	}
@@ -503,7 +505,7 @@ function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts
 		return entityName;
 	}
 	/** Resolve refrerence */
-	function resolveReference(node: ts.TypeReferenceNode, isInput?: boolean): ModelRefNode|ModelPromiseNode {
+	function resolveReference(node: ts.TypeReferenceNode, isInput?: boolean, pGenerics?: Map<string, ts.TypeNode>): ModelRefNode|ModelPromiseNode {
 		var nType= typeChecker.getTypeAtLocation(node);
 		var nName = nType.getSymbol()?.name;
 		var cNode: ModelRefNode | ModelPromiseNode;
@@ -519,15 +521,33 @@ function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts
 			entityVisitor.push(node.getChildren(), cNode, isInput, undefined);
 		} else {
 			nName= node.getText();
-			if (node.typeArguments?.length && nType.isClassOrInterface()){
-				// Generic type
-				if (!root.mapChilds[nName])
-					entityVisitor.push({
-						kind:	nodeTypeKind,
-						name:	nName,
-						nType:	nType,
-						node:	node
-					}, undefined, false);
+			if (node.typeArguments?.length && !root.mapChilds[nName]){
+				let targetdec= nType.symbol.declarations![0]! as ts.InterfaceDeclaration;
+				let targetType= typeChecker.getTypeAtLocation(targetdec);
+				if(targetType.isClassOrInterface() && !root.mapChilds[nName]){
+					if(pGenerics) console.warn('Sub generics are not supported!')
+					// Generic type
+					let generics= new Map();
+					let gArgs= node.typeArguments;
+					targetdec.typeParameters!.forEach((l, i)=>{
+						generics.set(l.getText(), gArgs[i]);
+					});
+					var currentNode: ModelNode= {
+						name:		nName,
+						kind:		ModelKind.PLAIN_OBJECT,
+						jsDoc:		undefined,
+						directives:	undefined,
+						children:	[],
+						mapChilds:	{},
+						isClass:	nType.isClass()
+					};
+					root.children.push(root.mapChilds[nName]= currentNode);
+					nType.getProperties().forEach(p=>{
+						entityVisitor.push(p.valueDeclaration!, currentNode, false, undefined, generics);
+					});
+				}
+			} else if(pGenerics){
+				nName= pGenerics.has(nName)? pGenerics.get(nName)!.getText() : nName;
 			}
 			cNode = {
 				kind: ModelKind.REF,
@@ -682,12 +702,14 @@ function _serializeAST<T extends ModelNode|RootModel>(root: T, factory: ts.NodeF
 				break;
 			case ModelKind.SCALAR:
 				nodeProperties.push(
-					factory.createPropertyAssignment(factory.createIdentifier("parser"), node.parser)
+					// factory.createPropertyAssignment(factory.createIdentifier("parser"), node.parser)
+					factory.createPropertyAssignment(factory.createIdentifier("parser"), factory.createIdentifier(node.parser))
 				);
 				break;
 			case ModelKind.UNION:
 				nodeProperties.push(
-					factory.createPropertyAssignment(factory.createIdentifier("resolveType"), node.resolveType)
+					// factory.createPropertyAssignment(factory.createIdentifier("resolveType"), node.resolveType)
+					factory.createPropertyAssignment(factory.createIdentifier("resolveType"), factory.createIdentifier(node.resolveType))
 				);
 				break;
 			// case ModelKind.DIRECTIVE:
@@ -848,7 +870,7 @@ function _parseModelDirective(node: ts.VariableDeclaration, root: RootModel, par
 					name:		nodeName,
 					jsDoc:		parseDirectives.jsDoc,
 					directives:	parseDirectives.directives,
-					parser:		objLiteralChild
+					parser:		node.name.getText()
 				});
 				break;
 			case importTokens.UNION:
@@ -862,7 +884,7 @@ function _parseModelDirective(node: ts.VariableDeclaration, root: RootModel, par
 					name:			nodeName,
 					jsDoc:			parseDirectives.jsDoc,
 					directives:		parseDirectives.directives,
-					resolveType:	objLiteralChild
+					resolveType:	node.name.getText()
 				});
 				break;
 		}

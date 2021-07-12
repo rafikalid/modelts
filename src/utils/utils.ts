@@ -8,15 +8,8 @@ export interface VisitorEntities<T>{
 	directives ?:		ParseDirectivesReturn
 	/** Distinguish methods if are input or output resolvers */
 	isInput?: boolean
-}
-
-/** Symbol type node */
-export const nodeTypeKind = Symbol();
-export interface SymbolTypeNode {
-	kind: symbol,
-	name: string,
-	nType: ts.Type,
-	node:	ts.TypeReferenceNode
+	/** Generic types mapping */
+	generics?: Map<string, ts.TypeNode>
 }
 
 /** Parse directives return */
@@ -44,14 +37,14 @@ export class Visitor<T>{
 		}
 	}
 	/** Push items */
-	push(nodes: T | T[], parentDescriptor?: ModelNode, isInput?: boolean, directives?: ParseDirectivesReturn) {
+	push(nodes: T | T[], parentDescriptor?: ModelNode, isInput?: boolean, directives?: ParseDirectivesReturn, generics?: Map<string, ts.TypeNode>) {
 		if(Array.isArray(nodes)){
 			var q = [], i, len;
 			for (i = 0, len = nodes.length; i < len; ++i) {
-				q.push({ node: nodes[i], parentDescriptor, isInput, directives });
+				q.push({ node: nodes[i], parentDescriptor, isInput, directives, generics });
 			}
 			this._queue.push(...q);
-		} else this._queue.push({ node: nodes, parentDescriptor, isInput, directives });
+		} else this._queue.push({ node: nodes, parentDescriptor, isInput, directives, generics });
 		return this;
 	}
 }
