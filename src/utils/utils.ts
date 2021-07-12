@@ -2,9 +2,8 @@ import { ModelBaseNode, ModelNode } from "@src/schema/model";
 import ts from "typescript";
 
 /** Interface */
-export type VisitorNode = ts.Node | SymbolTypeNode
-export interface VisitorEntities{
-	node: VisitorNode
+export interface VisitorEntities<T>{
+	node: T
 	parentDescriptor: 	ModelNode|undefined
 	directives ?:		ParseDirectivesReturn
 	/** Distinguish methods if are input or output resolvers */
@@ -16,7 +15,8 @@ export const nodeTypeKind = Symbol();
 export interface SymbolTypeNode {
 	kind: symbol,
 	name: string,
-	nType: ts.Type
+	nType: ts.Type,
+	node:	ts.TypeReferenceNode
 }
 
 /** Parse directives return */
@@ -28,9 +28,9 @@ export interface ParseDirectivesReturn {
 }
 
 /** Visitor pattern using generators */
-export class Visitor{
-	private _queue: VisitorEntities[] = []
-	constructor(nodes?: VisitorNode | VisitorNode[]) {
+export class Visitor<T>{
+	private _queue: VisitorEntities<T>[] = []
+	constructor(nodes?: T | T[]) {
 		if(nodes)
 			this.push(nodes);
 	}
@@ -44,7 +44,7 @@ export class Visitor{
 		}
 	}
 	/** Push items */
-	push(nodes: VisitorNode | VisitorNode[], parentDescriptor?: ModelNode, isInput?: boolean, directives?: ParseDirectivesReturn) {
+	push(nodes: T | T[], parentDescriptor?: ModelNode, isInput?: boolean, directives?: ParseDirectivesReturn) {
 		if(Array.isArray(nodes)){
 			var q = [], i, len;
 			for (i = 0, len = nodes.length; i < len; ++i) {

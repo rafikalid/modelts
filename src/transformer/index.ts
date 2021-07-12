@@ -1,5 +1,5 @@
-import { ModelKind, RootModel, ModelNode, ObjectField, ModelNodeWithChilds, ModelBaseNode, ImportTokens, ModelRefNode, ModelPromiseNode } from "@src/schema/model.js";
-import { nodeTypeKind, Visitor } from "@src/utils/utils.js";
+import { ModelKind, RootModel, ModelNode, ObjectField, ModelNodeWithChilds, ModelBaseNode, ImportTokens, ModelRefNode, ModelPromiseNode, ModelObjectNode } from "@src/schema/model.js";
+import { nodeTypeKind, SymbolTypeNode, Visitor } from "@src/utils/utils.js";
 import ts from "typescript";
 // import treefy from 'treeify';
 
@@ -54,7 +54,7 @@ function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts
 	// Import tokens
 	const importTokens= root._tokens;
 	// Entity parser visitor (classes and interfaces)
-	const entityVisitor= new Visitor();
+	const entityVisitor: Visitor<ts.Node | SymbolTypeNode>= new Visitor();
 
 	/** Return visitor */
 	return function(node: ts.Node){
@@ -137,7 +137,7 @@ function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts
 		var parseDirectives: ParseDirectivesReturn;
 		var nodeType;
 		var nodeSymbol;
-		const visitor: Visitor = new Visitor(rootNode);
+		const visitor: Visitor<ts.Node> = new Visitor(rootNode);
 		const visitorIt= visitor.it();
 		
 		while(true){
@@ -418,6 +418,8 @@ function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts
 							default:
 								console.warn(`>> Escaped ${ts.SyntaxKind[node.kind]} at ${node.getText()}: ${node.getStart()}`);
 						}
+						// childs
+						entityVisitor.push(node.getChildren(), currentNode, isInput);
 					}
 					break;
 				/** Tuple as Multipe types */
@@ -429,7 +431,6 @@ function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts
 					if(parentDescriptor){
 						if (parentDescriptor.kind !== ModelKind.METHOD)
 							throw new Error(`Enexpected param access at ${node.getText()}:${node.getStart()}`);
-						console.log('--- PARAM', (node as ts.ParameterDeclaration).type?.getText())
 						currentNode = {
 							kind: ModelKind.PARAM,
 							name: (node as ts.ParameterDeclaration).name.getText(),
@@ -444,7 +445,51 @@ function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts
 						}
 					}
 					break;
-				/** TODO parsing here  */
+				/** Prepared references */
+				case nodeTypeKind:
+					// Create entity
+					if(!(currentNode= root.mapChilds[node.name])){
+						nodeType= node.nType;
+						currentNode= {
+							name:		node.name,
+							kind:		ModelKind.PLAIN_OBJECT,
+							jsDoc:		nodeType.symbol?.getDocumentationComment(typeChecker).map(e=> e.text).join("\n"),
+							directives:	undefined,
+							children:	[],
+							mapChilds:	{},
+							isClass:	nodeType.isClass()
+						};
+						root.children.push(root.mapChilds[node.name]= currentNode);
+						// Parse each property
+						let typeArgs: ts.TypeNode[]= [];
+						node.node.typeArguments?.forEach(a=>{
+							// parse this type
+							resolveReference(a as ts.TypeReferenceNode, isInput);
+							// add type
+							typeArgs.push(a);
+						});
+						// list type args
+						let aliasType= (nodeType.symbol.getDeclarations()![0] as ts.InterfaceDeclaration).typeParameters!.map(p=> p.getText())
+						if(aliasType.length !== typeArgs.length)
+							throw new Error(`Enexpected generic agrs count at: ${node.node.getText()}`);
+						// go through properties
+						nodeType.getProperties().forEach(function({valueDeclaration: d}){
+							if(d){
+								// check name
+								if(ts.isPropertySignature(d)){
+									let i= aliasType?.indexOf(d.type?.getText()!);
+									if(i!>=0){
+										let t= factory.createPropertyDeclaration(
+											d.decorators, d.modifiers, d.name, d.questionToken, typeArgs[i!], d.initializer);
+										entityVisitor.push(t, currentNode, isInput);
+									} else throw new Error(`Could not find alias type: ${d.type?.getText()} at ${d.getText()}`);
+								} else {
+									entityVisitor.push(d, currentNode, isInput);
+								}
+							}
+						});
+					}
+					break;
 			}
 		}
 	}
@@ -473,14 +518,15 @@ function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts
 			};
 			entityVisitor.push(node.getChildren(), cNode, isInput, undefined);
 		} else {
-			nName ??= node.getText();
-			if (node.typeArguments?.length){
+			nName= node.getText();
+			if (node.typeArguments?.length && nType.isClassOrInterface()){
 				// Generic type
 				if (!root.mapChilds[nName])
 					entityVisitor.push({
 						kind:	nodeTypeKind,
 						name:	nName,
-						nType:	nType
+						nType:	nType,
+						node:	node
 					}, undefined, false);
 			}
 			cNode = {
@@ -491,7 +537,8 @@ function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts
 				value: nName
 			};
 		}
-	return cNode;
+		return cNode;
+	}
 }
 
 /** Insert AST */
