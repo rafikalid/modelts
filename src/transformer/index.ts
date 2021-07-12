@@ -522,6 +522,9 @@ function _astGenerate(program: ts.Program, ctx: ts.TransformationContext, sf: ts
 		} else {
 			nName= node.getText();
 			if (node.typeArguments?.length && !root.mapChilds[nName]){
+				console.log('---', ts.SyntaxKind[node.kind]);
+				if(!nType.symbol)
+					throw new Error(`Missing symbol on: ${node.getText()}`)
 				let targetdec= nType.symbol.declarations![0]! as ts.InterfaceDeclaration;
 				let targetType= typeChecker.getTypeAtLocation(targetdec);
 				if(targetType.isClassOrInterface() && !root.mapChilds[nName]){
