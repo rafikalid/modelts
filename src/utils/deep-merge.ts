@@ -14,7 +14,7 @@ export function deepMerge(targetNode: SimplifiedNode, srcNode: SimplifiedNode){
 		targetNode= n.target;
 		srcNode= n.src;
 		if(targetNode.kind !== srcNode.kind)
-			throw new Error(`Could not merge ${ModelKind[targetNode.kind]}:${targetNode.name} and ${ModelKind[srcNode.kind]}:${srcNode.name} at ${n.trace.join(' ➜ ')}`);
+			throw new Error(`Wrong kind ${ModelKind[targetNode.kind]}:${targetNode.name} and ${ModelKind[srcNode.kind]}:${srcNode.name} at ${n.trace.join(' ➜ ')}`);
 		
 		let j:number, jlen, srcChilds= srcNode.children, targetChilds= targetNode.children, child: ModelNode, tChild: ModelNode|undefined;
 		switch(srcNode.kind){
@@ -37,26 +37,26 @@ export function deepMerge(targetNode: SimplifiedNode, srcNode: SimplifiedNode){
 					}
 				}
 				break;
-			case ModelKind.METHOD:
-				for(j=0, jlen= srcChilds.length; j<jlen; ++j){
-					queue.push({
-						target:	targetChilds[j] as SimplifiedNode,
-						src:	srcChilds[j] as SimplifiedNode,
-						trace:	n.trace.concat(srcChilds[j].name)
-					});
-				}
-			default:
-				if(srcChilds==null && targetChilds==null){}
-				else if(srcChilds.length===1 && targetChilds.length===1){
-					queue.push({
-						target:	targetChilds[0] as SimplifiedNode,
-						src:	srcChilds[0] as SimplifiedNode,
-						trace:	n.trace.concat(srcChilds[0].name)
-					});
-				}
-				else{
-					throw new Error(`Could not merge ${ModelKind[srcNode.kind]}:${srcNode.name} and ${ModelKind[targetNode.kind]}:${targetNode.name} at ${n.trace.join(' ➜ ')}`);
-				}
+			// case ModelKind.METHOD:
+			// 	for(j=0, jlen= srcChilds.length; j<jlen; ++j){
+			// 		queue.push({
+			// 			target:	targetChilds[j] as SimplifiedNode,
+			// 			src:	srcChilds[j] as SimplifiedNode,
+			// 			trace:	n.trace.concat(srcChilds[j].name)
+			// 		});
+			// 	}
+			// default:
+			// 	if(srcChilds==null && targetChilds==null){}
+			// 	else if(srcChilds.length===1 && targetChilds.length===1){
+			// 		queue.push({
+			// 			target:	targetChilds[0] as SimplifiedNode,
+			// 			src:	srcChilds[0] as SimplifiedNode,
+			// 			trace:	n.trace.concat(srcChilds[0].name)
+			// 		});
+			// 	}
+			// 	else{
+			// 		throw new Error(`Could not merge ${ModelKind[srcNode.kind]}:${srcNode.name} and ${ModelKind[targetNode.kind]}:${targetNode.name} at ${n.trace.join(' ➜ ')}`);
+			// 	}
 		}
 	}
 }
