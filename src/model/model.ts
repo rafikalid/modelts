@@ -72,6 +72,11 @@ export class Model{
 		// Return node
 		return new Model(root);
 	}
+
+	/** export Graphql */
+	asGraphQL(){
+		
+	}
 }
 
 /** Deep merge */
