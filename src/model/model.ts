@@ -1,7 +1,8 @@
-import { ModelKind, ModelNode, RootModel } from "@src/schema/model";
+import { ModelKind, ModelNode, RootModel, SimplifiedNode } from "@src/schema/model";
+import { deepMerge } from "@src/utils/deep-merge";
 import glob from "glob";
 
-const DEFINE_SCALAR_NAME_REGEX= /^\w{,50}$/;
+// const DEFINE_SCALAR_NAME_REGEX= /^\w{,50}$/;
 
 export interface ModelOptions{
 	children:	RootModel['children']
@@ -32,8 +33,8 @@ export class Model{
 	// /** Define new scalar */
 	// defineScalar<T>(name: string, options: ScalarDefineOptions<T>){
 	// 	// Checks
-	// 	if(!DEFINE_SCALAR_NAME_REGEX.test(name))
-	// 		throw new Error(`Illegal scalar name: ${name}. Expected to match: ${DEFINE_SCALAR_NAME_REGEX}`);
+		// if(!DEFINE_SCALAR_NAME_REGEX.test(name))
+		// 	throw new Error(`Illegal scalar name: ${name}. Expected to match: ${DEFINE_SCALAR_NAME_REGEX}`);
 	// 	var ast= this.AST;
 	// 	if(ast.mapChilds[name])
 	// 		throw new Error(`Already defined entity: ${name}`);
@@ -57,34 +58,20 @@ export class Model{
 			});
 		});
 		// load data
-		const children: ModelNode[]=[];
-		const mapChilds: Record<string, ModelNode>= {};
-		// const root: RootModel= {
-		// 	kind: ModelKind.ROOT,
-		// 	name: undefined,
-		// 	jsDoc: undefined,
-		// 	directives: undefined,
-		// 	children: [],
-		// 	mapChilds: {}
-		// };
+		const root: SimplifiedNode= {
+			kind:	ModelKind.ROOT,
+			name:	undefined,
+			children: []
+		};
 		var i, len, node: RootModel, oNode: ModelNode;
 		for(i=0, len= files.length; i<len; ++i){
-			if((node= (await import(files[i])).model) && node instanceof Model){
-				let j, jLen, childs= node.children, child;
-				for(j=0, jLen= childs.length; j<jLen; ++j){
-					child= childs[j];
-					if(oNode= mapChilds[child.name!]){
-						console.log('------------- duplicate node: ', child.name);
-					} else {
-						children.push(mapChilds[child.name!]= child);
-					}
-				}
+			if((node= (await import(files[i])).model) && (node instanceof Model)){
+				deepMerge(root, node.AST as SimplifiedNode);
 			}
 		}
 		// Return node
-		return new Model({
-			children,
-			mapChilds
-		});
+		return new Model(root);
 	}
 }
+
+/** Deep merge */

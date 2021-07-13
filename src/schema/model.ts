@@ -47,7 +47,7 @@ export enum ModelKind{
 }
 
 /** Model node */
-export type ModelNode = ModelObjectNode | ConstNode | ModelEnumNode | EnumMember | ModelListNode | ModelRefNode | ModelUnionNode | ObjectField | ModelMethod | ModelParam | ModelScalarNode<any> | ModelPromiseNode
+export type ModelNode = ModelObjectNode | ConstNode | ModelEnumNode | EnumMember | ModelListNode | ModelRefNode | ModelUnionNode | ObjectField | ModelMethod | ModelParam | ModelScalarNode<any> | ModelPromiseNode | RootModel
 
 /** Model node AST */
 export interface ModelBaseNode{
@@ -78,6 +78,8 @@ export interface ModelPromiseNode extends ModelNodeWithChilds{
 /** Object node */
 export interface ModelObjectNode extends ModelNodeWithChilds{
 	kind:		ModelKind.PLAIN_OBJECT
+	/** Original class name */
+	oName?:		string
 	mapChilds:	Record<string, ObjectField>
 	isClass:	boolean
 }
@@ -176,4 +178,11 @@ export interface ModelParam extends ModelNodeWithChilds{
 export interface ModelScalarNode<T> extends ModelBaseNode{
 	kind:	ModelKind.SCALAR
 	parser: string
+}
+
+/** Simplified node with childs */
+export interface SimplifiedNode{
+	name:		ModelNodeWithChilds['name'],
+	kind:		ModelNodeWithChilds['kind'],
+	children:	ModelNodeWithChilds['children']
 }
