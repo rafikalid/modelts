@@ -1,5 +1,9 @@
-export * from './model/model.js'
-export * from './transformer/index.js'
-export * from './helpers/interfaces.js'
-export * from './model/decorators.js'
-export * from './schema/types.js'
+export * from './task-runner/gulp'
+
+export * from './transformer/program'
+export * from './transformer/index'
+
+export * from './model/model'
+export * from './helpers/interfaces'
+export * from './model/decorators'
+export * from './schema/types'

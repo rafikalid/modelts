@@ -48,34 +48,39 @@ export class Model{
 	// 	ast.children.push(ast.mapChilds[name]= scalar);
 	// }
 
-	/** Create schema from files */
-	static async loadFromFiles(pathPattern:string){
-		// Load files
-		const files: string[]= await new Promise(function(res, rej){
-			glob(pathPattern, function(er, files){
-				if(er) rej(er)
-				else res(files);
-			});
-		});
-		// load data
-		const root: SimplifiedNode= {
-			kind:	ModelKind.ROOT,
-			name:	undefined,
-			children: []
-		};
-		var i, len, node: RootModel, oNode: ModelNode;
-		for(i=0, len= files.length; i<len; ++i){
-			if((node= (await import(files[i])).model) && (node instanceof Model)){
-				deepMerge(root, node.AST as SimplifiedNode);
-			}
-		}
-		// Return node
-		return new Model(root);
+	/** Load Model schema from file */
+	static from(globFilesPath: string): Model{
+		throw new Error('This method is used as a placeholder only for the compiler. Did you forget to run the compiler?');
 	}
+
+	// /** Create schema from files @deprecated */
+	// static async loadFromFiles(pathPattern:string){
+	// 	// Load files
+	// 	const files: string[]= await new Promise(function(res, rej){
+	// 		glob(pathPattern, function(er, files){
+	// 			if(er) rej(er)
+	// 			else res(files);
+	// 		});
+	// 	});
+	// 	// load data
+	// 	const root: SimplifiedNode= {
+	// 		kind:	ModelKind.ROOT,
+	// 		name:	undefined,
+	// 		children: []
+	// 	};
+	// 	var i, len, node: RootModel, oNode: ModelNode;
+	// 	for(i=0, len= files.length; i<len; ++i){
+	// 		if((node= (await import(files[i])).model) && (node instanceof Model)){
+	// 			deepMerge(root, node.AST as SimplifiedNode);
+	// 		}
+	// 	}
+	// 	// Return node
+	// 	return new Model(root);
+	// }
 
 	/** export Graphql */
 	asGraphQL(){
-		
+		const ast= this.AST;
 	}
 }
 

@@ -5,7 +5,7 @@ import ts from "typescript";
 
 const PACKAGE_NAME = '"tt-model"';
 /** Model pretty output */
-const PRETTY= true;
+export const PRETTY= true;
 
 /** visitor signature */
 type visitEachChildVisitorSignature<T>= (node: T, parentDescriptor: ModelNode|undefined, _visite: VisiteEachNodeCb<T>, addEntityToParse: (entity: ts.TypeNode)=> string)=> void
