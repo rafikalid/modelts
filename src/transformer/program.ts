@@ -1,21 +1,14 @@
 import ts from "typescript";
-import {readFileSync} from 'fs';
-import {resolve, dirname} from "path";
+// import {readFileSync} from 'fs';
+import {join, dirname, relative} from "path";
 import { ParseModelFrom } from "./parser";
 import { serializeAST } from "./serialize-ast";
 import { PACKAGE_NAME } from "@src/config";
 
 /** Load files and generate Model */
-export function generateModel(tsConfigPath: string, filePath: string, pretty:boolean):string|undefined{
-	//* Parse tsConfig
-	var tsP= ts.parseConfigFileTextToJson(tsConfigPath, readFileSync(tsConfigPath, 'utf-8'));
-	if(tsP.error) throw new Error("Config file parse fails:" + tsP.error.messageText.toString());
-	var tsP2= ts.convertCompilerOptionsFromJson(tsP.config.compilerOptions, process.cwd(), tsConfigPath);
-	if(tsP2.errors?.length) throw new Error("Config file parse fails:" + tsP2.errors.map(e=> e.messageText.toString()));
-	const compilerOptions: ts.CompilerOptions= tsP2.options;
-	//* Create program
-	// const program= ts.createProgram([filePath], compilerOptions);
-	const srcFile= ts.createSourceFile(filePath, readFileSync(filePath, 'utf-8'), compilerOptions.target ?? ts.ScriptTarget.ESNext, true);
+export function generateModel(filePath: string, fileContent: string, compilerOptions: ts.CompilerOptions, pretty:boolean):string|undefined{
+	//* Load source file
+	const srcFile= ts.createSourceFile(filePath, fileContent, compilerOptions.target ?? ts.ScriptTarget.Latest, true);
 	//* check for files with "Model.from('glob-path')"
 	const mappedFiles= mapFilesWithModel(srcFile);
 
@@ -25,7 +18,7 @@ export function generateModel(tsConfigPath: string, filePath: string, pretty:boo
 	//* Resolve Model for each pattern
 	const ModelMap: Map<string, ts.ObjectLiteralExpression>= new Map();
 	mappedFiles.patterns.forEach(function(p){
-		ModelMap.set(p, serializeAST(ParseModelFrom(resolve(dirname(filePath), p.slice(1, p.length-1)), compilerOptions), ts.factory, pretty));
+		ModelMap.set(p, serializeAST(ParseModelFrom(join(relative(process.cwd(), dirname(filePath)), p.slice(1, p.length-1)), compilerOptions), ts.factory, pretty));
 	});
 
 	//* Insert in each target file

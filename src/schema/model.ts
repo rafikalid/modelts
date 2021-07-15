@@ -1,6 +1,3 @@
-import { Model } from "@src/model/model";
-import ts from "typescript";
-import { JsonTypes } from "./types";
 
 /** Model kinds */
 export enum ModelKind{
@@ -150,14 +147,14 @@ export interface ModelMethod extends ModelBaseNode{
 
 /** Import tokens */
 export interface ImportTokens{
-	tsModel:			string
-	Model:				string
-	ModelScalar:		string
-	UNION:				string
-	ignore:				string
-	assert:				string
-	ResolversOf:		string
-	InputResolversOf:	string
+	tsModel:			string|undefined
+	Model:				string|undefined
+	ModelScalar:		string|undefined
+	UNION:				string|undefined
+	ignore:				string|undefined
+	assert:				string|undefined
+	ResolversOf:		string|undefined
+	InputResolversOf:	string|undefined
 };
 
 /** Model base class @deprecated */

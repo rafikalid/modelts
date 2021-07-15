@@ -1,7 +1,7 @@
 import Gulp from 'gulp';
 
 import {typescriptCompile} from './typescript.js'
-import { compileTest } from './test-files.js';
+// import { compileTest } from './test-files.js';
 
 const {watch, series}= Gulp;
 
@@ -18,19 +18,19 @@ function watchCb(cb: Function){
 }
 
 var tasks: any[];
-if(argv.includes('--test')){
-	tasks=[
-		compileTest
-	];
-} else {
-	tasks= [
-		typescriptCompile,
-		// parallel([
-		// 	typescriptCompile,
-		// 	graphQlCompile
-		// ]),
-		watchCb
-	]
-}
+// if(argv.includes('--test')){
+// 	tasks=[
+// 		compileTest
+// 	];
+// } else {
+tasks= [
+	typescriptCompile,
+	// parallel([
+	// 	typescriptCompile,
+	// 	graphQlCompile
+	// ]),
+	watchCb
+]
+// }
 
 export default series(tasks);

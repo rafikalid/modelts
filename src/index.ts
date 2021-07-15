@@ -1,7 +1,6 @@
 export * from './task-runner/gulp'
 
 export * from './transformer/program'
-export * from './transformer/index'
 
 export * from './model/model'
 export * from './helpers/interfaces'
