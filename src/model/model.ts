@@ -1,20 +1,11 @@
-import { ModelKind, ModelNode, RootModel, SimplifiedNode } from "@src/schema/model";
-import { deepMerge } from "@src/utils/deep-merge";
-import glob from "glob";
+import { ModelRoot } from "@src/schema/model";
 
 // const DEFINE_SCALAR_NAME_REGEX= /^\w{,50}$/;
 
-export interface ModelOptions{
-	children:	RootModel['children']
-	mapChilds?:	RootModel['mapChilds']
-}
-
 /** Model compiler */
 export class Model{
-	private AST: ModelOptions
-	constructor();
-	constructor(AST: ModelOptions);
-	constructor(ast?: ModelOptions){
+	private AST: ModelRoot
+	constructor(ast: ModelRoot){
 		if(!ast){
 			// Transformer didn't run
 			throw new Error('Expected AST arg. Did you use transformer in your typescript?');

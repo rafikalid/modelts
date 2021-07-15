@@ -47,7 +47,7 @@ export enum ModelKind{
 }
 
 /** Model node */
-export type ModelNode = ModelObjectNode | ConstNode | ModelEnumNode | EnumMember | ModelListNode | ModelRefNode | ModelUnionNode | ObjectField | ModelMethod | ModelParam | ModelScalarNode<any> | ModelPromiseNode | RootModel
+export type ModelNode = ModelRoot| ModelObjectNode | ConstNode | ModelEnumNode | EnumMember | ModelListNode | ModelRefNode | ModelUnionNode | ObjectField | ModelMethod | ModelParam | ModelScalarNode<any> | ModelPromiseNode | RootModel
 
 /** Model node AST */
 export interface ModelBaseNode{
@@ -160,13 +160,20 @@ export interface ImportTokens{
 	InputResolversOf:	string
 };
 
-/** Model base class */
+/** Model base class @deprecated */
 export interface RootModel extends ModelBaseNode{
 	kind:		ModelKind.ROOT
 	children:	ModelNode[],
 	mapChilds:	Record<string, ModelNode>
 	/** Import tokens */
 	_tokens: ImportTokens
+}
+
+/** Root model */
+export interface ModelRoot extends ModelBaseNode{
+	kind:		ModelKind.ROOT
+	children:	ModelNode[],
+	mapChilds:	Record<string, ModelNode>
 }
 
 /** Param */

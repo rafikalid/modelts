@@ -14,9 +14,10 @@ export function generateModel(tsConfigPath: string, filePath: string, pretty:boo
 	if(tsP2.errors?.length) throw new Error("Config file parse fails:" + tsP2.errors.map(e=> e.messageText.toString()));
 	const compilerOptions: ts.CompilerOptions= tsP2.options;
 	//* Create program
-	const program= ts.createProgram([filePath], compilerOptions);
+	// const program= ts.createProgram([filePath], compilerOptions);
+	const srcFile= ts.createSourceFile(filePath, readFileSync(filePath, 'utf-8'), compilerOptions.target ?? ts.ScriptTarget.ESNext, true);
 	//* check for files with "Model.from('glob-path')"
-	const mappedFiles= mapFilesWithModel(filePath, program.getSourceFile(filePath)!);
+	const mappedFiles= mapFilesWithModel(srcFile);
 
 	if(!mappedFiles.patterns.size)
 		return;
@@ -24,14 +25,14 @@ export function generateModel(tsConfigPath: string, filePath: string, pretty:boo
 	//* Resolve Model for each pattern
 	const ModelMap: Map<string, ts.ObjectLiteralExpression>= new Map();
 	mappedFiles.patterns.forEach(function(p){
-		ModelMap.set(p, serializeAST(ParseModelFrom(p, compilerOptions), ts.factory, pretty));
+		ModelMap.set(p, serializeAST(ParseModelFrom(resolve(dirname(filePath), p.slice(1, p.length-1)), compilerOptions), ts.factory, pretty));
 	});
 
 	//* Insert in each target file
 	var {file, ModelVarName}= mappedFiles;
 	file= ts.transform(file, [function(ctx:ts.TransformationContext): ts.Transformer<ts.Node>{
 		return _createModelInjectTransformer(ctx, file, ModelVarName);
-	}]) as unknown as ts.SourceFile;
+	}]).transformed[0] as ts.SourceFile;
 	//* return content
 	return ts.createPrinter().printFile(file);
 
@@ -43,9 +44,7 @@ export function generateModel(tsConfigPath: string, filePath: string, pretty:boo
 			if(ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && ModelVarName.has(node.expression.getFirstToken()!.getText())){
 				if(node.expression.name.getText() === 'from'){
 					let arg= node.arguments[0].getText();
-					arg= arg.slice(1, arg.length-1); // remove quotes
-					arg= resolve(dir, arg); // resolve absolute path pattern
-					node= factory.createCallExpression(
+					node= factory.createNewExpression(
 						factory.createIdentifier(node.expression.getFirstToken()!.getText()),
 						undefined,
 						[ModelMap.get(arg)!]
@@ -69,7 +68,7 @@ interface FilterFilesWithModelResp{
 	ModelVarName: Set<string>
 }
 /** Filter files to get those with "Model.from('glob-path')" */
-function mapFilesWithModel(filePath: string, srcFile: ts.SourceFile): FilterFilesWithModelResp{
+function mapFilesWithModel(srcFile: ts.SourceFile): FilterFilesWithModelResp{
 	const foundGlobPatterns:Set<string>= new Set();
 	const ModelVarName:Set<string>= new Set();
 	//* Parse each file
