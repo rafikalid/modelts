@@ -1,8 +1,7 @@
-import {join, relative, dirname} from 'path'
+import {join, relative, dirname, sep as PathSep} from 'path'
 import ts from 'typescript'
-import Glob from 'glob';
-const {sync: GlobSync}= Glob;
 import {statSync} from 'fs';
+const isWindows= PathSep==='\\';
 
 /** Resolve import @ */
 export function createImportTransformer(compilerOptions: ts.CompilerOptions){
@@ -95,6 +94,9 @@ export function createImportTransformer(compilerOptions: ts.CompilerOptions){
 					path= _resolveFilePath(path);
 					// create relative path to current file
 					path= relative(_dirname, path);
+					// Replace windows antislashes
+					if(isWindows) path= path.replace(/\\/g, '/');
+					// Add prefix "./"
 					if(path.charAt(0)==='/') path= '.'+path;
 					else if(path.charAt(0)!=='.') path= './'+path;
 				}

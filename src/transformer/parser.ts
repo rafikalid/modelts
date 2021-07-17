@@ -69,18 +69,21 @@ export function ParseModelFrom(pathPattern:string, compilerOptions: ts.CompilerO
 					//* Class or Interface entity
 					//  Skip entities without "Export" keyword
 					if (entity.getFirstToken()?.kind !== ts.SyntaxKind.ExportKeyword) continue rtLoop;
+					console.log('--- compile interface', (entity as ts.InterfaceDeclaration).name.getText());
 					// TODO parse fields
 					break;
 				case ts.SyntaxKind.EnumDeclaration:
 					//* Enumeration
 					//  Skip entities without "Export" keyword
 					if (entity.getFirstToken()?.kind !== ts.SyntaxKind.ExportKeyword) continue rtLoop;
+					console.log('--- compile Enum', (entity as ts.EnumDeclaration).name.getText());
 					// TODO enum
 					break;
 				case ts.SyntaxKind.VariableStatement:
 					//* Scalars
 					//  Skip entities without "Export" keyword
 					if (entity.getFirstToken()?.kind !== ts.SyntaxKind.ExportKeyword) continue rtLoop;
+					console.log('--- compile Scalar');
 					//TODO
 					break;
 			}
@@ -110,9 +113,6 @@ function _getNodeMetadata(node: ts.Node, nodeSymbol: ts.Symbol | undefined, type
 	if(nodeSymbol){
 		let jsDoc= (a= nodeSymbol.getDocumentationComment(typeChecker)) ? (a as ts.SymbolDisplayPart[]).map(e=> e.text) : [];
 		let jsDocTags;
-		if
-
-	} && (){
 
 	}
 	
