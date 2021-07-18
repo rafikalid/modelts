@@ -17,11 +17,7 @@ export interface VisitorEntities<T>{
 
 /** Visitor pattern using generators */
 export class Visitor<T>{
-	private _queue: VisitorEntities<T>[] = []
-	constructor(nodes?: T | readonly T[]) {
-		if(nodes)
-			this.push(nodes, undefined, false);
-	}
+	private _queue: VisitorEntities<T>[] = [];
 
 	/** Get next element */
 	*it() {
@@ -32,7 +28,7 @@ export class Visitor<T>{
 		}
 	}
 	/** Push items */
-	push(nodes: T | readonly T[], parentDescriptor: ModelNode|undefined, isInput: boolean, fileName: string, importTokens: ImportTokens, generics?: Map<string, ts.TypeNode>) {
+	push(nodes: T | readonly T[]|undefined, parentDescriptor: ModelNode|undefined, isInput: boolean, fileName: string, importTokens: ImportTokens, generics?: Map<string, ts.TypeNode>) {
 		var queue= this._queue;
 		if(Array.isArray(nodes)){
 			var i, len;
@@ -46,7 +42,7 @@ export class Visitor<T>{
 					generics
 				});
 			}
-		} else {
+		} else if(nodes!= null) {
 			queue.push({
 				//@ts-ignore
 				node: nodes,

@@ -1,4 +1,4 @@
-import { ImportTokens, ModelBaseNode, ModelKind, ModelNode, ModelRoot, ObjectField, ModelObjectNode, ModelRefNode } from "@src/schema/model";
+import { ImportTokens, ModelBaseNode, ModelKind, ModelNode, ModelRoot, ObjectField, ModelObjectNode, ModelRefNode, ModelPromiseNode, ModelNodeWithChilds } from "@src/schema/model";
 import ts from "typescript";
 import Glob from 'glob';
 import { PACKAGE_NAME } from "@src/config";
@@ -15,6 +15,7 @@ export function ParseModelFrom(pathPattern:string, compilerOptions: ts.CompilerO
 		children: [],
 		mapChilds: {}
 	}
+	const mapEntities= root.mapChilds;
 	//* Load files using glob
 	const files= Glob.sync(pathPattern);
 	if (files.length === 0){
@@ -48,7 +49,7 @@ export function ParseModelFrom(pathPattern:string, compilerOptions: ts.CompilerO
 			InputResolversOf:	undefined
 		};
 		// Push to iterator
-		visitor.push(srcFile.getChildren(), undefined, false, srcFile.getText(), importTokens, undefined);
+		visitor.push(srcFile.getChildren(), undefined, false, srcFile.fileName, importTokens, undefined);
 	}
 	_parseNode(visitor, namelessEntities, typeChecker, root);
 
@@ -95,6 +96,8 @@ function _parseNode(visitor:Visitor<ts.Node>, namelessEntities: NamelessEntity[]
 	var nodeSymbol: ts.Symbol | undefined;
 	var {children: entities, mapChilds: mapEntities}= root;
 	var fieldName: string;
+	var ref: ModelRefNode|ModelPromiseNode;
+	var pkind: ModelKind;
 	while(true){
 		var item= it.next();
 		if(item.done) break; 
@@ -241,13 +244,28 @@ function _parseNode(visitor:Visitor<ts.Node>, namelessEntities: NamelessEntity[]
 				// Add to parent
 				pDesc.children.push(pDesc.mapChilds[fieldName!] = currentNode);
 				// Go through childs
-				visitor.push(node.getChildren(), currentNode, isInput, fileName, importTokens, generics);
+				visitor.push(node.getChildren(), resolverMethod || currentNode, isInput, fileName, importTokens, generics);
 				// Go through arg param
 				if(!isInput){
 					let params = (node as ts.MethodDeclaration).parameters;
 					if (params && params[1])
 						visitor.push(params[1], resolverMethod, isInput, fileName, importTokens, generics);
 				}
+				break;
+			case ts.SyntaxKind.Parameter:
+				// Method parameter
+				if(pDesc==null || pDesc.kind!==ModelKind.METHOD)
+					throw new Error(`Expected parent as method. Got ${pDesc?ModelKind[pDesc.kind]: 'nothing'} at ${fileName}::${node.getText()}`);
+				currentNode = {
+					kind: ModelKind.PARAM,
+					name: (node as ts.ParameterDeclaration).name.getText(),
+					jsDoc: undefined,
+					directives:	undefined,
+					children: []
+				};
+				pDesc.children[1] = currentNode;
+				// Parse param type
+				visitor.push((node as ts.ParameterDeclaration).type, currentNode, isInput, fileName, importTokens, generics);
 				break;
 			case ts.SyntaxKind.EnumDeclaration:
 				//* Enumeration
@@ -277,11 +295,76 @@ function _parseNode(visitor:Visitor<ts.Node>, namelessEntities: NamelessEntity[]
 				// Go through fields
 				visitor.push(node.getChildren(), currentNode, isInput, fileName, importTokens, generics);
 				break;
+			case ts.SyntaxKind.EnumMember:
+				//* Enum member
+				if(!pDesc || pDesc.kind!==ModelKind.ENUM)
+					throw new Error(`Expected Enum as parent. Got ${pDesc?ModelKind[pDesc.kind]: 'nothing'}`);
+				meta= _getNodeMetadata(node, nodeSymbol, typeChecker, importTokens);
+				fieldName= (node as ts.EnumMember).name.getText();
+				currentNode = {
+					kind:		ModelKind.ENUM_MEMBER,
+					name:		fieldName,
+					jsDoc:		meta.jsDoc,
+					directives:	meta.directives,
+					required:	true,
+					value:		typeChecker.getConstantValue(node as ts.EnumMember)
+					// value:		(node as ts.EnumMember).initializer?.getText()
+				};
+				pDesc.children.push(pDesc.mapChilds[fieldName]=currentNode);
+				break;
+			case ts.SyntaxKind.TypeAliasDeclaration:
+				console.log('----------------------------------------->> TYPE: ', node.getText());
+				break;
 			case ts.SyntaxKind.VariableStatement:
 				//* Scalars
 				//  Skip entities without "Export" keyword
 				if (node.getFirstToken()?.kind !== ts.SyntaxKind.ExportKeyword) continue;
-				console.log('--- compile Scalar');
+				meta= _getNodeMetadata(node, nodeSymbol,typeChecker, importTokens);
+				if(meta.ignore) continue;
+				(node as ts.VariableStatement).declarationList.declarations.forEach(function(n){
+					var type= n.type;
+					var nSymb: ts.Symbol | undefined;
+					if(type && ts.isTypeReferenceNode(type) && type.typeArguments?.length===1){
+						let typeArg= type.typeArguments[0];
+						nodeName= typeArg.getText();
+						switch(type.typeName.getText()){
+							case importTokens.ModelScalar:
+								//* Scalar
+								if(!ts.isTypeReferenceNode(typeArg))
+									throw new Error(`Enexpected scalar name: "${nodeName}" at ${fileName}::${typeArg.getStart()}`);
+								if(mapEntities[nodeName])
+									throw new Error(`Already defined entity ${nodeName} at ${fileName}: ${typeArg.getStart()}`);
+								nSymb= typeChecker.getSymbolAtLocation(n.name);
+								if(!nSymb)
+									throw new Error(`Failed to get symbol for Scalar "${nodeName}" at ${fileName}`);
+								entities.push(mapEntities[nodeName]={
+									kind:		ModelKind.SCALAR,
+									name:		nodeName,
+									jsDoc:		meta.jsDoc,
+									directives:	meta.directives,
+									parser:		typeChecker.getFullyQualifiedName(nSymb)
+								});
+								break;
+							case importTokens.UNION:
+								//* Union
+								if(!ts.isTypeReferenceNode(typeArg))
+									throw new Error(`Enexpected UNION name: "${nodeName}" at ${fileName}::${typeArg.getStart()}`);
+								if(mapEntities[nodeName])
+									throw new Error(`Already defined entity ${nodeName} at ${fileName}: ${typeArg.getStart()}`);
+								nSymb= typeChecker.getSymbolAtLocation(n.name);
+								if(!nSymb)
+									throw new Error(`Failed to get symbol for UNION "${nodeName}" at ${fileName}`);
+								entities.push(mapEntities[nodeName]={
+									kind:		ModelKind.UNION,
+									name:		nodeName,
+									jsDoc:		meta.jsDoc,
+									directives:	meta.directives,
+									parser:		typeChecker.getFullyQualifiedName(nSymb)
+								});
+								break;
+						}
+					}
+				});
 				//TODO
 				break;
 			case ts.SyntaxKind.TypeLiteral:
@@ -296,7 +379,7 @@ function _parseNode(visitor:Visitor<ts.Node>, namelessEntities: NamelessEntity[]
 					mapChilds:	{},
 					isClass:	false
 				};
-				let ref: ModelRefNode={
+				ref={
 					kind: ModelKind.REF,
 					name: undefined,
 					jsDoc: undefined,
@@ -313,6 +396,103 @@ function _parseNode(visitor:Visitor<ts.Node>, namelessEntities: NamelessEntity[]
 					if(valueDeclaration)
 						visitor.push(valueDeclaration, currentNode, isInput, fileName, importTokens, generics);
 				});
+				break;
+			case ts.SyntaxKind.TypeReference:
+				//* Type reference
+				if(!pDesc) continue;
+				pkind= pDesc.kind;
+				if(pkind!==ModelKind.FIELD && pkind!==ModelKind.LIST && pkind!==ModelKind.METHOD && pkind!==ModelKind.PARAM){
+					console.warn(`>> Escaped ${ts.SyntaxKind[node.kind]} at ${node.getStart()}`);
+					continue;
+				}
+				if(!nodeSymbol)
+					throw new Error(`Expected symbol at ${fileName}\n${node.getText()}`);
+				if(nodeSymbol.name === 'Promise'){
+					ref={
+						kind: ModelKind.PROMISE,
+						name: undefined,
+						jsDoc: undefined,
+						directives: undefined,
+						children: []
+					};
+					visitor.push((node as ts.TypeReferenceNode).typeArguments!, ref, isInput, fileName, importTokens, generics);
+				} else {
+					if((node as ts.TypeReferenceNode).typeArguments){}
+					// fieldName= nodeSymbol.name;
+					console.log('>>', node.getText());
+					nodeType.getProperties().forEach(function(p){
+						var t= typeChecker.getTypeOfSymbolAtLocation(p, p.valueDeclaration!);
+						//FIXME here -------------------------
+						// (p.declarations as ts.TypeReferenceNode).typeName.getText();
+						console.log('---', p.name)
+						console.log('::',typeChecker.typeToString(t))
+					});
+				}
+
+				//TODO
+				// typeChecker.isImplementationOfOverload(node as ts.TypeReferenceNode)
+				// if(fileName === 'Promise'){
+				// } else if(nodeSymbol) {
+				// 	// Resolve name
+				// 	(node as ts.TypeReferenceNode).typeArguments?.forEach
+				// 	// ref
+				// 	ref={
+				// 		kind:		ModelKind.REF,
+				// 		name:		fieldName,
+				// 		jsDoc:		undefined,
+				// 		directives:	undefined
+				// 	};
+
+				// 	if ((node as ts.TypeReferenceNode).typeArguments?.length && !mapEntities[fieldName]){} else {
+
+				// 	}
+				// }
+				
+				// pDesc.children[0] = resolveReference(node as ts.TypeReferenceNode, isInput, generics);
+				break;
+			case ts.SyntaxKind.StringKeyword:
+			case ts.SyntaxKind.BooleanKeyword:
+			case ts.SyntaxKind.NumberKeyword:
+			case ts.SyntaxKind.SymbolKeyword:
+			case ts.SyntaxKind.BigIntKeyword:
+				// Predefined scalars
+				if(pDesc){
+					pkind= pDesc.kind;
+					if(pkind!==ModelKind.FIELD && pkind!==ModelKind.LIST && pkind!==ModelKind.METHOD && pkind!==ModelKind.PARAM){
+						console.warn(`>> Escaped ${ts.SyntaxKind[node.kind]} at ${node.getStart()}`);
+						continue;
+					}
+					currentNode={
+						kind: ModelKind.REF,
+						name: node.getText(),
+						jsDoc: undefined,
+						directives: undefined
+					};
+					(pDesc as ObjectField).children[0] = currentNode;
+				}
+				break;
+			case ts.SyntaxKind.ArrayType:
+				if(pDesc==null) continue;
+				pkind= pDesc.kind;
+				if(pkind!==ModelKind.FIELD && pkind!==ModelKind.LIST && pkind!==ModelKind.METHOD && pkind!==ModelKind.PARAM){
+					console.warn(`>> Escaped ${ts.SyntaxKind[node.kind]} at ${node.getStart()}`);
+					continue;
+				}
+				currentNode = {
+					kind:	ModelKind.LIST,
+					name:	undefined,
+					jsDoc:	undefined,
+					directives:	undefined,
+					children: []
+				};
+				(pDesc as ModelNodeWithChilds).children[0] = currentNode;
+				// Go through childs
+				visitor.push((node as ts.ArrayTypeNode).elementType, currentNode, isInput, fileName, importTokens, generics);
+				break;
+			case ts.SyntaxKind.TupleType:
+				// Type type
+				throw new Error(`Tuples are insupported, did you mean Array of type? at ${fileName}::${node.getText()}`);
+				break;
 		}
 	}
 }
@@ -328,7 +508,11 @@ function _getNodeMetadata(node: ts.Node, nodeSymbol: ts.Symbol | undefined, type
 	var a: any;
 	var i, len;
 	// Ignore field if has "private" or "protected" keywords
-	if(node.modifiers?.some(({kind})=> kind===ts.SyntaxKind.PrivateKeyword || kind===ts.SyntaxKind.ProtectedKeyword))
+	if(node.modifiers?.some(({kind})=>
+		kind===ts.SyntaxKind.PrivateKeyword
+		|| kind===ts.SyntaxKind.ProtectedKeyword
+		|| kind===ts.SyntaxKind.AbstractKeyword
+	))
 		return result;
 	// Load jsDoc tags
 	var directives= [];
@@ -362,8 +546,7 @@ function _getNodeMetadata(node: ts.Node, nodeSymbol: ts.Symbol | undefined, type
 	if(node.decorators){
 		let decos= node.decorators;
 		for(i=0, len= decos.length; i<len; ++i){
-			let expression= decos[i].expression;
-			console.log('---- deco: ', ts.SyntaxKind[expression.kind], '::', expression.getText());
+			directives.push(decos[i].expression.getText());
 		}
 	}
 	if(directives.length){
@@ -371,7 +554,6 @@ function _getNodeMetadata(node: ts.Node, nodeSymbol: ts.Symbol | undefined, type
 		jsDoc.push(...directives.map(n=> `@${n}`));
 	}
 	result.jsDoc= jsDoc.join("\n");
-	console.log('-----', result.jsDoc)
 	return result;
 }
 interface GetNodeMatadataReturn{
@@ -387,3 +569,4 @@ interface NamelessEntity{
 	node:	ModelObjectNode
 	ref:	ModelRefNode
 };
+

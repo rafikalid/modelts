@@ -78,27 +78,29 @@ export function serializeAST<T extends ModelNode|RootModel>(root: T, factory: ts
 					factory.createPropertyAssignment( factory.createIdentifier("method"), factory.createIdentifier(node.method) )
 				);
 				break;
-			case ModelKind.REF:
-				nodeProperties.push(
-					factory.createPropertyAssignment(factory.createIdentifier("value"), factory.createStringLiteral(node.value))
-				);
-				break;
+			// case ModelKind.REF:
+			// 	nodeProperties.push(
+			// 		factory.createPropertyAssignment(factory.createIdentifier("value"), factory.createStringLiteral(node.value))
+			// 	);
+			// 	break;
 			case ModelKind.CONST:
 			case ModelKind.ENUM_MEMBER:
 				nodeProperties.push(
-					factory.createPropertyAssignment(factory.createIdentifier("value"), factory.createIdentifier(node.value ?? "undefined"))
+					factory.createPropertyAssignment(
+						factory.createIdentifier("value"),
+						typeof node.value==='string' ?
+							factory.createStringLiteral(node.value)
+							: node.value==null ?
+								factory.createIdentifier("undefined")
+								: factory.createNumericLiteral(node.value)
+					)
 				);
 				break;
 			case ModelKind.SCALAR:
+			case ModelKind.UNION:
 				nodeProperties.push(
 					// factory.createPropertyAssignment(factory.createIdentifier("parser"), node.parser)
 					factory.createPropertyAssignment(factory.createIdentifier("parser"), factory.createIdentifier(node.parser))
-				);
-				break;
-			case ModelKind.UNION:
-				nodeProperties.push(
-					// factory.createPropertyAssignment(factory.createIdentifier("resolveType"), node.resolveType)
-					factory.createPropertyAssignment(factory.createIdentifier("resolveType"), factory.createIdentifier(node.resolveType))
 				);
 				break;
 			// case ModelKind.DIRECTIVE:

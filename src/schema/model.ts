@@ -95,7 +95,7 @@ export interface ModelListNode extends ModelNodeWithChilds{
 /** Union of multiple kinds */
 export interface ModelUnionNode extends ModelBaseNode{
 	kind:		ModelKind.UNION
-	resolveType:	string
+	parser:		string
 }
 
 /** Reference */
@@ -120,7 +120,7 @@ export interface EnumMember extends ModelBaseNode{
 	/** Is required */
 	required:	boolean
 	/** value */
-	value: string | undefined
+	value: string | number | undefined
 }
 
 export const MethodAttr= Symbol('method');
