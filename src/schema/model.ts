@@ -101,8 +101,6 @@ export interface ModelUnionNode extends ModelBaseNode{
 /** Reference */
 export interface ModelRefNode extends ModelBaseNode{
 	kind:		ModelKind.REF
-	/** Reference name */
-	value:		string
 }
 
 /** Object fields */

@@ -1,31 +1,26 @@
-import { ModelBaseNode, ModelNode } from "@src/schema/model";
+import { ImportTokens, ModelBaseNode, ModelNode } from "@src/schema/model";
 import ts from "typescript";
 
 /** Interface */
 export interface VisitorEntities<T>{
 	node: T
 	parentDescriptor: 	ModelNode|undefined
-	directives ?:		ParseDirectivesReturn
 	/** Distinguish methods if are input or output resolvers */
-	isInput?: boolean
+	isInput: boolean
 	/** Generic types mapping */
-	generics?: Map<string, ts.TypeNode>
-}
-
-/** Parse directives return */
-export interface ParseDirectivesReturn {
-	ignore: boolean
-	tsModel: boolean
-	directives: ModelBaseNode['directives'],
-	jsDoc: string | undefined
+	generics: Map<string, ts.TypeNode>|undefined
+	/** Current file name */
+	fileName:	string
+	/** Current file import tokens */
+	importTokens: ImportTokens
 }
 
 /** Visitor pattern using generators */
 export class Visitor<T>{
 	private _queue: VisitorEntities<T>[] = []
-	constructor(nodes?: T | T[]) {
+	constructor(nodes?: T | readonly T[]) {
 		if(nodes)
-			this.push(nodes);
+			this.push(nodes, undefined, false);
 	}
 
 	/** Get next element */
@@ -37,14 +32,31 @@ export class Visitor<T>{
 		}
 	}
 	/** Push items */
-	push(nodes: T | T[], parentDescriptor?: ModelNode, isInput?: boolean, directives?: ParseDirectivesReturn, generics?: Map<string, ts.TypeNode>) {
+	push(nodes: T | readonly T[], parentDescriptor: ModelNode|undefined, isInput: boolean, fileName: string, importTokens: ImportTokens, generics?: Map<string, ts.TypeNode>) {
+		var queue= this._queue;
 		if(Array.isArray(nodes)){
-			var q = [], i, len;
+			var i, len;
 			for (i = 0, len = nodes.length; i < len; ++i) {
-				q.push({ node: nodes[i], parentDescriptor, isInput, directives, generics });
+				queue.push({
+					node: nodes[i],
+					parentDescriptor,
+					isInput,
+					fileName,
+					importTokens,
+					generics
+				});
 			}
-			this._queue.push(...q);
-		} else this._queue.push({ node: nodes, parentDescriptor, isInput, directives, generics });
+		} else {
+			queue.push({
+				//@ts-ignore
+				node: nodes,
+				parentDescriptor,
+				isInput,
+				fileName,
+				importTokens,
+				generics
+			});
+		}
 		return this;
 	}
 }
