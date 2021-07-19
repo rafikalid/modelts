@@ -5,6 +5,7 @@ import { PACKAGE_NAME } from "@src/config";
 import { Visitor } from "@src/utils/utils";
 import { resolve } from "path";
 import { DEFAULT_SCALARS } from "@src/schema/types";
+import { AssertOptions } from "@src/model/decorators";
 
 /** Parse Model from files */
 export function ParseModelFrom(pathPattern:string, compilerOptions: ts.CompilerOptions): ModelRoot{
@@ -13,7 +14,6 @@ export function ParseModelFrom(pathPattern:string, compilerOptions: ts.CompilerO
 		kind: ModelKind.ROOT,
 		name: undefined,
 		jsDoc: undefined,
-		directives: undefined,
 		children: [],
 		mapChilds: {}
 	}
@@ -130,7 +130,6 @@ function _parseNode(visitor:Visitor<ts.Node>, typeChecker: ts.TypeChecker, root:
 						name:		nodeName,
 						kind:		ModelKind.PLAIN_OBJECT,
 						jsDoc:		meta.jsDoc,
-						directives:	meta.directives,
 						children:	[],
 						mapChilds:	{},
 						isClass:	nodeType.isClass()
@@ -162,9 +161,9 @@ function _parseNode(visitor:Visitor<ts.Node>, typeChecker: ts.TypeChecker, root:
 					kind:		ModelKind.FIELD,
 					name:		fieldName,
 					jsDoc:		meta.jsDoc,
-					directives:	meta.directives,
 					required:	!(node as ts.PropertySignature).questionToken,
 					children:	[],
+					asserts:	[],
 					resolver:	undefined,
 					input:		undefined
 				};
@@ -204,7 +203,6 @@ function _parseNode(visitor:Visitor<ts.Node>, typeChecker: ts.TypeChecker, root:
 						kind:		ModelKind.METHOD,
 						name:		fieldName,
 						jsDoc:		meta.jsDoc,
-						directives:	meta.directives,
 						// method:		node as ts.MethodDeclaration,
 						method:		{
 							fileName:	node.getSourceFile().fileName,
@@ -222,9 +220,9 @@ function _parseNode(visitor:Visitor<ts.Node>, typeChecker: ts.TypeChecker, root:
 					kind:		ModelKind.FIELD,
 					name:		fieldName,
 					jsDoc:		meta.jsDoc,
-					directives:	meta.directives,
 					required:	!(node as ts.MethodDeclaration).questionToken,
 					children:	[],
+					asserts:	meta.asserts,
 					resolver:	resolverMethod,
 					input:		inputResolver
 				};
@@ -247,7 +245,6 @@ function _parseNode(visitor:Visitor<ts.Node>, typeChecker: ts.TypeChecker, root:
 					kind: ModelKind.PARAM,
 					name: (node as ts.ParameterDeclaration).name.getText(),
 					jsDoc: undefined,
-					directives:	undefined,
 					children: []
 				};
 				pDesc.children[1] = currentNode;
@@ -270,7 +267,6 @@ function _parseNode(visitor:Visitor<ts.Node>, typeChecker: ts.TypeChecker, root:
 						name:		nodeName,
 						kind:		ModelKind.ENUM,
 						jsDoc:		meta.jsDoc,
-						directives:	meta.directives,
 						children:	[],
 						mapChilds:	{}
 					};
@@ -292,7 +288,6 @@ function _parseNode(visitor:Visitor<ts.Node>, typeChecker: ts.TypeChecker, root:
 					kind:		ModelKind.ENUM_MEMBER,
 					name:		fieldName,
 					jsDoc:		meta.jsDoc,
-					directives:	meta.directives,
 					required:	true,
 					value:		typeChecker.getConstantValue(node as ts.EnumMember)
 					// value:		(node as ts.EnumMember).initializer?.getText()
@@ -325,7 +320,6 @@ function _parseNode(visitor:Visitor<ts.Node>, typeChecker: ts.TypeChecker, root:
 									kind:		ModelKind.SCALAR,
 									name:		fieldName,
 									jsDoc:		meta.jsDoc,
-									directives:	meta.directives,
 									parser:		{
 										fileName:	node.getSourceFile().fileName,
 										className:	nodeName,
@@ -344,7 +338,6 @@ function _parseNode(visitor:Visitor<ts.Node>, typeChecker: ts.TypeChecker, root:
 									kind:		ModelKind.UNION,
 									name:		fieldName,
 									jsDoc:		meta.jsDoc,
-									directives:	meta.directives,
 									parser:		{
 										fileName:	node.getSourceFile().fileName,
 										className:	nodeName,
@@ -365,7 +358,6 @@ function _parseNode(visitor:Visitor<ts.Node>, typeChecker: ts.TypeChecker, root:
 					name:		undefined,
 					kind:		ModelKind.PLAIN_OBJECT,
 					jsDoc:		undefined,
-					directives:	undefined,
 					children:	[],
 					mapChilds:	{},
 					isClass:	false
@@ -373,8 +365,7 @@ function _parseNode(visitor:Visitor<ts.Node>, typeChecker: ts.TypeChecker, root:
 				ref={
 					kind: ModelKind.REF,
 					name: undefined,
-					jsDoc: undefined,
-					directives: undefined
+					jsDoc: undefined
 				};
 				namelessEntities.push({
 					name:	pDesc.name,
@@ -418,7 +409,6 @@ function _parseNode(visitor:Visitor<ts.Node>, typeChecker: ts.TypeChecker, root:
 						kind: ModelKind.PROMISE,
 						name: undefined,
 						jsDoc: undefined,
-						directives: undefined,
 						children: []
 					};
 					visitor.push((node as ts.TypeReferenceNode).typeArguments!, ref, isInput, fileName, importTokens, generics);
@@ -465,8 +455,7 @@ function _parseNode(visitor:Visitor<ts.Node>, typeChecker: ts.TypeChecker, root:
 					currentNode={
 						kind: ModelKind.REF,
 						name: node.getText(),
-						jsDoc: undefined,
-						directives: undefined
+						jsDoc: undefined
 					};
 					(pDesc as ObjectField).children[0] = currentNode;
 				}
@@ -482,7 +471,6 @@ function _parseNode(visitor:Visitor<ts.Node>, typeChecker: ts.TypeChecker, root:
 					kind:	ModelKind.LIST,
 					name:	undefined,
 					jsDoc:	undefined,
-					directives:	undefined,
 					children: []
 				};
 				(pDesc as ModelNodeWithChilds).children[0] = currentNode;
@@ -504,8 +492,7 @@ function _parseNode(visitor:Visitor<ts.Node>, typeChecker: ts.TypeChecker, root:
 			entities.push(mapEntities[fieldName]= {
 				kind: ModelKind.BASIC_SCALAR,
 				name: fieldName,
-				jsDoc: undefined,
-				directives: undefined
+				jsDoc: undefined
 			});
 		}
 	}
@@ -554,8 +541,8 @@ function _getNodeMetadata(node: ts.Node, nodeSymbol: ts.Symbol | undefined, type
 	const result: GetNodeMatadataReturn= {
 		ignore:		false,
 		tsModel:	false,
-		directives: undefined,
-		jsDoc:		undefined
+		jsDoc:		undefined,
+		asserts:	undefined
 	}
 	var a: any;
 	var i, len;
@@ -569,6 +556,8 @@ function _getNodeMetadata(node: ts.Node, nodeSymbol: ts.Symbol | undefined, type
 	// Load jsDoc tags
 	var directives= [];
 	var jsDoc: string[]= [];
+	var assertTxt: string;
+	const asserts: string[]= [];
 	if(nodeSymbol){
 		jsDoc= (a= nodeSymbol.getDocumentationComment(typeChecker)) ? (a as ts.SymbolDisplayPart[]).map(e=> e.text) : [];
 		let jsDocTags= nodeSymbol.getJsDocTags();
@@ -580,7 +569,11 @@ function _getNodeMetadata(node: ts.Node, nodeSymbol: ts.Symbol | undefined, type
 				switch(tagName){
 					case importTokens.assert:
 						// FIXME check using multiple lines for jsdoc tag
-						directives.push(tag.text? `${tagName}(${tag.text.map(e=> e.text).join(', ')})` : tagName);
+						if(tag.text){
+							assertTxt= tag.text.map(e=> e.text).join(', ');
+							directives.push(tag.text? `${tagName}(${assertTxt})` : tagName);
+							asserts.push(`[${assertTxt}]`);
+						}
 						break;
 					case importTokens.tsModel:
 						result.tsModel= true;
@@ -597,22 +590,36 @@ function _getNodeMetadata(node: ts.Node, nodeSymbol: ts.Symbol | undefined, type
 	// load decorators
 	if(node.decorators){
 		let decos= node.decorators;
+		let decoExp: ts.CallExpression;
 		for(i=0, len= decos.length; i<len; ++i){
-			directives.push(decos[i].expression.getText());
+			decoExp= decos[i].expression as ts.CallExpression;
+			directives.push(decoExp.getText());
+			if(decoExp.expression.getText()===importTokens.assert){
+				asserts.push(`[${decoExp.arguments.map(a=> a.getText()).join(',')}]`)
+			}
 		}
 	}
 	if(directives.length){
-		result.directives= directives;
 		jsDoc.push(...directives.map(n=> `@${n}`));
 	}
 	result.jsDoc= jsDoc.join("\n");
+	// Compile asserts
+	if(asserts.length){
+		let assertObj= result.asserts= {};
+		try{
+			Object.assign(assertObj, ...asserts.map(e=> JSON.parse(e)[0]));
+		}catch(err){
+			throw new Error(`Fail to parse assert arguments at ${node.getSourceFile().fileName}\n${asserts.join("\n")}\n${err?.stack}`);
+		}
+	}
+	// Return
 	return result;
 }
 interface GetNodeMatadataReturn{
 	ignore: boolean
 	tsModel: boolean
-	directives: ModelBaseNode['directives'],
 	jsDoc:	string|undefined
+	asserts: AssertOptions|undefined
 }
 
 /** Nameless entities */

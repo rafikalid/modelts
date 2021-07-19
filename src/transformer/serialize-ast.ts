@@ -1,3 +1,4 @@
+import { AssertOptions } from "@src/model/decorators";
 import { MethodDescriptor, ModelKind, ModelNode, ModelNodeWithChilds, ModelRoot, ObjectField } from "@src/schema/model";
 import ts from "typescript";
 
@@ -16,13 +17,7 @@ export function serializeAST(root: ModelRoot, factory: ts.NodeFactory, importsMa
 		nodeProperties.push(
 			factory.createPropertyAssignment( factory.createIdentifier("name"), node.name==null? factory.createIdentifier("undefined") : factory.createStringLiteral(node.name)),
 			factory.createPropertyAssignment( factory.createIdentifier("kind"), factory.createNumericLiteral(node.kind)),
-			factory.createPropertyAssignment( factory.createIdentifier("jsDoc"), node.jsDoc==null? factory.createIdentifier("undefined") : factory.createStringLiteral(node.jsDoc)),
-			factory.createPropertyAssignment(
-				factory.createIdentifier("directives"),
-				node.directives==null?
-					factory.createIdentifier("undefined")
-					: factory.createArrayLiteralExpression(node.directives.map(e=> factory.createIdentifier(e)), PRETTY)
-			)
+			factory.createPropertyAssignment( factory.createIdentifier("jsDoc"), node.jsDoc==null? factory.createIdentifier("undefined") : factory.createStringLiteral(node.jsDoc))
 		);
 		// Add children
 		if((node as ModelNodeWithChilds).children){
@@ -61,6 +56,11 @@ export function serializeAST(root: ModelRoot, factory: ts.NodeFactory, importsMa
 				nodeProperties.push(
 					factory.createPropertyAssignment(factory.createIdentifier("input"), node.input ? _serializeMethod(node.input, factory, importsMapper, PRETTY) : factory.createIdentifier('undefined'))
 				);
+				// Asserts
+				nodeProperties.push( factory.createPropertyAssignment(
+					factory.createIdentifier("asserts"),
+					node.asserts ? _compileAsserts(node.name, node.asserts, node.children[0], factory, PRETTY) : factory.createIdentifier('undefined')
+				));
 				// Resolver
 				if((node as ObjectField).resolver){
 					let fieldObjFields: ts.ObjectLiteralElementLike[]= [];
@@ -146,4 +146,14 @@ function _serializeMethod(method: MethodDescriptor, factory: ts.NodeFactory, imp
 	// 	factory.createPropertyAssignment( factory.createIdentifier("name"), factory.createStringLiteral(method.name)),
 	// 	factory.createPropertyAssignment( factory.createIdentifier("isStatic"), method.isStatic ? factory.createTrue(): factory.createFalse())
 	// ], pretty);
+}
+
+function _compileAsserts(name: string | undefined, asserts: AssertOptions, type: ModelNode, factory: ts.NodeFactory, PRETTY: boolean): ts.Expression {
+	switch(type.kind){
+		case ModelKind.REF:
+		case ModelKind.LIST:
+			//* Apply asserts as string or Array
+			break;
+			//------------------------------------------------------HERE
+	}
 }

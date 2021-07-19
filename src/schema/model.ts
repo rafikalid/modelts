@@ -1,3 +1,4 @@
+import { AssertOptions } from "@src/model/decorators";
 
 /** Model kinds */
 export enum ModelKind{
@@ -40,10 +41,7 @@ export enum ModelKind{
 	SCALAR,
 
 	/** Basic scalar */
-	BASIC_SCALAR,
-
-	/** jsDoc directive */
-	DIRECTIVE
+	BASIC_SCALAR
 }
 
 /** Model node */
@@ -55,8 +53,6 @@ export interface ModelBaseNode{
 	kind:		ModelKind
 	/** Comment */
 	jsDoc:		string | undefined
-	/** jsDoc directives */
-	directives:	string[] | undefined
 }
 
 /** Const value */
@@ -115,6 +111,8 @@ export interface ObjectField extends ModelNodeWithChilds{
 	resolver:	ModelMethod|undefined
 	/** Input resolver */
 	input:		MethodDescriptor|undefined
+	/** Input Assert */
+	asserts:	AssertOptions|undefined
 }
 
 /** Enum member */
@@ -150,12 +148,6 @@ export interface MethodDescriptorI{
 	/** is prototype or static method */
 	isStatic:	boolean
 }
-
-// /** jsDoc directive */
-// export interface ModelJsDocDirective extends ModelBaseNode{
-// 	kind:		ModelKind.DIRECTIVE
-// 	resolver:	ts.ObjectLiteralExpression
-// }
 
 
 /** Import tokens */
