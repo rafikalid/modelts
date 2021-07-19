@@ -3,6 +3,8 @@ import ts from "typescript";
 import Glob from 'glob';
 import { PACKAGE_NAME } from "@src/config";
 import { Visitor } from "@src/utils/utils";
+import { resolve } from "path";
+import { DEFAULT_SCALARS } from "@src/schema/types";
 
 /** Parse Model from files */
 export function ParseModelFrom(pathPattern:string, compilerOptions: ts.CompilerOptions): ModelRoot{
@@ -16,20 +18,18 @@ export function ParseModelFrom(pathPattern:string, compilerOptions: ts.CompilerO
 		mapChilds: {}
 	}
 	const mapEntities= root.mapChilds;
+	const result: ModelRoot= root;
 	//* Load files using glob
 	const files= Glob.sync(pathPattern);
 	if (files.length === 0){
 		console.warn(`No file found for pattern: ${pathPattern}`);
-		return root;
+		return result;
 	}
 	//* Create compiler host
 	const pHost= ts.createCompilerHost(compilerOptions, true); 
 	//* Create program
 	const program= ts.createProgram(files, compilerOptions, pHost);
 	const typeChecker= program.getTypeChecker();
-
-	//* nameless entities
-	const namelessEntities: NamelessEntity[]= [];
 
 	//* Step 1: parse AST
 	const visitor= new Visitor<ts.Node>();
@@ -49,46 +49,17 @@ export function ParseModelFrom(pathPattern:string, compilerOptions: ts.CompilerO
 			InputResolversOf:	undefined
 		};
 		// Push to iterator
-		visitor.push(srcFile.getChildren(), undefined, false, srcFile.fileName, importTokens, undefined);
+		visitor.push(srcFile.getChildren(), undefined, false, resolve(srcFile.fileName), importTokens, undefined);
 	}
-	_parseNode(visitor, namelessEntities, typeChecker, root);
-
-	//* Resolve nameless nodes
-	const namelessMap:Map<string, number>= new Map();
-	for(i=0, len=namelessEntities.length; i<len; ++i){
-		let item= namelessEntities[i];
-		let itemName= item.name??'Entity';
-		let itemI;
-		let tmpn= itemName;
-		while(mapEntities[itemName]){
-			if(namelessMap.has(tmpn)) itemI= namelessMap.get(tmpn);
-			else{
-				itemI= 1;
-				namelessMap.set(tmpn, itemI);
-			}
-			itemName= `${tmpn}_${i}`;
-		}
-		item.node.name= itemName;
-		mapEntities[itemName]= item.node;
-		item.ref.name= itemName; 
-	}
+	_parseNode(visitor, typeChecker, root);
 	
 	// TODO
 	// const typeChecker= program.getTypeChecker();
-	return root;
-}
-
-/** Walking queue (recursitivity alternative) */
-interface seekingQueueItem{
-	node: ts.Node,
-	/** Parent descriptor */
-	parentDescriptor: ModelNode|undefined
-	/** Does this class methods are for input or output */
-	isInput: boolean
+	return result;
 }
 
 /** Parse each node */
-function _parseNode(visitor:Visitor<ts.Node>, namelessEntities: NamelessEntity[], typeChecker: ts.TypeChecker, root: ModelRoot){
+function _parseNode(visitor:Visitor<ts.Node>, typeChecker: ts.TypeChecker, root: ModelRoot){
 	const it= visitor.it();
 	var currentNode: ModelNode, nodeName: string;
 	var meta: GetNodeMatadataReturn;
@@ -98,6 +69,9 @@ function _parseNode(visitor:Visitor<ts.Node>, namelessEntities: NamelessEntity[]
 	var fieldName: string;
 	var ref: ModelRefNode|ModelPromiseNode;
 	var pkind: ModelKind;
+	const namelessEntities: NamelessEntity[]= [];
+	const referenceMap: Map<string, ts.TypeReferenceNode>= new Map();
+	// Go though nodes
 	while(true){
 		var item= it.next();
 		if(item.done) break; 
@@ -214,8 +188,16 @@ function _parseNode(visitor:Visitor<ts.Node>, namelessEntities: NamelessEntity[]
 				// resolver
 				let resolverMethod: ObjectField['resolver']= undefined;
 				let inputResolver: ObjectField['input']= undefined;
+				let parentNameNode= (node.parent as ts.ClassDeclaration).name;
+				if(!parentNameNode) throw new Error(`Expected parent Node at ${fileName} ${node.getText()}`);
+				let parentName= parentNameNode.getText();
 				if(isInput){
-					inputResolver= typeChecker.getFullyQualifiedName(nodeSymbol);
+					inputResolver= {
+						fileName:	node.getSourceFile().fileName,
+						className:	parentName,
+						isStatic:	node.modifiers?.some(n=> n.kind===ts.SyntaxKind.StaticKeyword) ?? false,
+						name:		fieldName
+					};
 					// inputResolver= `${parentDescriptor.oName??parentDescriptor.name}.prototype.${fieldName}`;
 				} else {
 					resolverMethod= {
@@ -224,7 +206,12 @@ function _parseNode(visitor:Visitor<ts.Node>, namelessEntities: NamelessEntity[]
 						jsDoc:		meta.jsDoc,
 						directives:	meta.directives,
 						// method:		node as ts.MethodDeclaration,
-						method:		typeChecker.getFullyQualifiedName(nodeSymbol),
+						method:		{
+							fileName:	node.getSourceFile().fileName,
+							className:	parentName,
+							isStatic:	node.modifiers?.some(n=> n.kind===ts.SyntaxKind.StaticKeyword) ?? false,
+							name:		fieldName
+						},
 						// method: `${parentDescriptor.oName??parentDescriptor.name}.prototype.${fieldName}`,
 						/** [ResultType, ParamType] */
 						children:	[undefined, undefined],
@@ -323,43 +310,47 @@ function _parseNode(visitor:Visitor<ts.Node>, namelessEntities: NamelessEntity[]
 				if(meta.ignore) continue;
 				(node as ts.VariableStatement).declarationList.declarations.forEach(function(n){
 					var type= n.type;
-					var nSymb: ts.Symbol | undefined;
+					var nodeName= n.name.getText();
 					if(type && ts.isTypeReferenceNode(type) && type.typeArguments?.length===1){
 						let typeArg= type.typeArguments[0];
-						nodeName= typeArg.getText();
+						fieldName= typeArg.getText();
 						switch(type.typeName.getText()){
 							case importTokens.ModelScalar:
 								//* Scalar
 								if(!ts.isTypeReferenceNode(typeArg))
-									throw new Error(`Enexpected scalar name: "${nodeName}" at ${fileName}::${typeArg.getStart()}`);
-								if(mapEntities[nodeName])
-									throw new Error(`Already defined entity ${nodeName} at ${fileName}: ${typeArg.getStart()}`);
-								nSymb= typeChecker.getSymbolAtLocation(n.name);
-								if(!nSymb)
-									throw new Error(`Failed to get symbol for Scalar "${nodeName}" at ${fileName}`);
-								entities.push(mapEntities[nodeName]={
+									throw new Error(`Enexpected scalar name: "${fieldName}" at ${fileName}::${typeArg.getStart()}`);
+								if(mapEntities[fieldName])
+									throw new Error(`Already defined entity ${fieldName} at ${fileName}: ${typeArg.getStart()}`);
+								entities.push(mapEntities[fieldName]={
 									kind:		ModelKind.SCALAR,
-									name:		nodeName,
+									name:		fieldName,
 									jsDoc:		meta.jsDoc,
 									directives:	meta.directives,
-									parser:		typeChecker.getFullyQualifiedName(nSymb)
+									parser:		{
+										fileName:	node.getSourceFile().fileName,
+										className:	nodeName,
+										isStatic:	true,
+										name:		undefined
+									}
 								});
 								break;
 							case importTokens.UNION:
 								//* Union
 								if(!ts.isTypeReferenceNode(typeArg))
-									throw new Error(`Enexpected UNION name: "${nodeName}" at ${fileName}::${typeArg.getStart()}`);
-								if(mapEntities[nodeName])
-									throw new Error(`Already defined entity ${nodeName} at ${fileName}: ${typeArg.getStart()}`);
-								nSymb= typeChecker.getSymbolAtLocation(n.name);
-								if(!nSymb)
-									throw new Error(`Failed to get symbol for UNION "${nodeName}" at ${fileName}`);
-								entities.push(mapEntities[nodeName]={
+									throw new Error(`Enexpected UNION name: "${fieldName}" at ${fileName}::${typeArg.getStart()}`);
+								if(mapEntities[fieldName])
+									throw new Error(`Already defined entity ${fieldName} at ${fileName}: ${typeArg.getStart()}`);
+								entities.push(mapEntities[fieldName]={
 									kind:		ModelKind.UNION,
-									name:		nodeName,
+									name:		fieldName,
 									jsDoc:		meta.jsDoc,
 									directives:	meta.directives,
-									parser:		typeChecker.getFullyQualifiedName(nSymb)
+									parser:		{
+										fileName:	node.getSourceFile().fileName,
+										className:	nodeName,
+										isStatic:	true,
+										name:		undefined
+									}
 								});
 								break;
 						}
@@ -397,6 +388,23 @@ function _parseNode(visitor:Visitor<ts.Node>, namelessEntities: NamelessEntity[]
 						visitor.push(valueDeclaration, currentNode, isInput, fileName, importTokens, generics);
 				});
 				break;
+			case ts.SyntaxKind.UnionType:
+				{
+					let tp:ts.TypeNode|undefined= undefined;
+					(node as ts.UnionTypeNode).types.forEach(n=>{
+						if(n.kind===ts.SyntaxKind.UndefinedKeyword)
+							(pDesc as ObjectField).required= false;
+						else if(tp)
+							throw new Error(`Please give a name to the union "${node.getText()}".`)
+						else
+							tp= n;
+					});
+					if(tp) visitor.push(tp, pDesc, isInput, fileName, importTokens, generics);
+				}
+				break;
+			case ts.SyntaxKind.TypeOperator:
+				visitor.push((node as ts.TypeOperatorNode).type, pDesc, isInput, fileName, importTokens, generics);
+				break;
 			case ts.SyntaxKind.TypeReference:
 				//* Type reference
 				if(!pDesc) continue;
@@ -405,9 +413,7 @@ function _parseNode(visitor:Visitor<ts.Node>, namelessEntities: NamelessEntity[]
 					console.warn(`>> Escaped ${ts.SyntaxKind[node.kind]} at ${node.getStart()}`);
 					continue;
 				}
-				if(!nodeSymbol)
-					throw new Error(`Expected symbol at ${fileName}\n${node.getText()}`);
-				if(nodeSymbol.name === 'Promise'){
+				if(nodeSymbol && nodeSymbol.name === 'Promise'){
 					ref={
 						kind: ModelKind.PROMISE,
 						name: undefined,
@@ -417,16 +423,10 @@ function _parseNode(visitor:Visitor<ts.Node>, namelessEntities: NamelessEntity[]
 					};
 					visitor.push((node as ts.TypeReferenceNode).typeArguments!, ref, isInput, fileName, importTokens, generics);
 				} else {
-					if((node as ts.TypeReferenceNode).typeArguments){}
-					// fieldName= nodeSymbol.name;
-					console.log('>>', node.getText());
-					nodeType.getProperties().forEach(function(p){
-						var t= typeChecker.getTypeOfSymbolAtLocation(p, p.valueDeclaration!);
-						//FIXME here -------------------------
-						// (p.declarations as ts.TypeReferenceNode).typeName.getText();
-						console.log('---', p.name)
-						console.log('::',typeChecker.typeToString(t))
-					});
+					fieldName= node.getText();
+					if(!mapEntities[fieldName] && !referenceMap.has(fieldName)){
+						referenceMap.set(fieldName, node as ts.TypeReferenceNode);
+					}
 				}
 
 				//TODO
@@ -494,6 +494,58 @@ function _parseNode(visitor:Visitor<ts.Node>, namelessEntities: NamelessEntity[]
 				throw new Error(`Tuples are insupported, did you mean Array of type? at ${fileName}::${node.getText()}`);
 				break;
 		}
+	}
+
+	//* Add default scalars
+	var i: number, len: number;
+	for(i=0, len=  DEFAULT_SCALARS.length; i<len; ++i){
+		fieldName= DEFAULT_SCALARS[i];
+		if(!mapEntities.hasOwnProperty(fieldName)){
+			entities.push(mapEntities[fieldName]= {
+				kind: ModelKind.BASIC_SCALAR,
+				name: fieldName,
+				jsDoc: undefined,
+				directives: undefined
+			});
+		}
+	}
+
+	//* Resolve references
+	referenceMap.forEach(function(node, nodeName){
+		// if((node as ts.TypeReferenceNode).typeArguments){}
+		// fieldName= nodeSymbol.name;
+		console.log('Resolve reference >>', node.getText());
+		if(!mapEntities.hasOwnProperty(nodeName)) {
+			console.log('----------- define ------------')
+			var nodeType= typeChecker.getTypeFromTypeNode(node);
+			nodeType.getProperties().forEach(function(p){
+				var t= typeChecker.getTypeOfSymbolAtLocation(p, p.valueDeclaration!);
+				//FIXME here -------------------------
+				// (p.declarations as ts.TypeReferenceNode).typeName.getText();
+				console.log('---', p.name)
+				console.log('::',typeChecker.typeToString(t))
+			});
+		}
+	});
+	
+	//* Resolve nameless nodes
+	const namelessMap:Map<string, number>= new Map();
+	for(i=0, len=namelessEntities.length; i<len; ++i){
+		let item= namelessEntities[i];
+		let itemName= item.name??'Entity';
+		let itemI;
+		let tmpn= itemName;
+		while(mapEntities[itemName]){
+			if(namelessMap.has(tmpn)) itemI= namelessMap.get(tmpn);
+			else{
+				itemI= 1;
+				namelessMap.set(tmpn, itemI);
+			}
+			itemName= `${tmpn}_${i}`;
+		}
+		item.node.name= itemName;
+		mapEntities[itemName]= item.node;
+		item.ref.name= itemName; 
 	}
 }
 

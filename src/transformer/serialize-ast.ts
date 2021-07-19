@@ -1,13 +1,14 @@
-import { ModelKind, ModelNode, ModelNodeWithChilds, ObjectField, RootModel } from "@src/schema/model";
+import { MethodDescriptor, ModelKind, ModelNode, ModelNodeWithChilds, ModelRoot, ObjectField } from "@src/schema/model";
 import ts from "typescript";
 
 /** Serialize AST */
-export function serializeAST<T extends ModelNode|RootModel>(root: T, factory: ts.NodeFactory, PRETTY: boolean): ts.ObjectLiteralExpression{
+export function serializeAST(root: ModelRoot, factory: ts.NodeFactory, importsMapper: Map<string, Map<string, ts.Identifier>>, PRETTY: boolean): ts.ObjectLiteralExpression{
 	var nodeProperties: ts.ObjectLiteralElementLike[]= [];
 	var result= factory.createObjectLiteralExpression(nodeProperties, PRETTY)
 	const  results: ts.ObjectLiteralElementLike[][]= [nodeProperties];
-	const queue: (ModelNode|RootModel)[]= [root];
+	const queue: (ModelNode|ModelRoot)[]= [root];
 	var i=0;
+	// Serialize nodes
 	while(i<queue.length){
 		var node= queue[i];
 		nodeProperties= results[i++];
@@ -58,8 +59,9 @@ export function serializeAST<T extends ModelNode|RootModel>(root: T, factory: ts
 					factory.createPropertyAssignment(factory.createIdentifier("required"), (node as ObjectField).required ? factory.createTrue(): factory.createFalse())
 				);
 				nodeProperties.push(
-					factory.createPropertyAssignment(factory.createIdentifier("input"), factory.createIdentifier((node as ObjectField).input || 'undefined'))
+					factory.createPropertyAssignment(factory.createIdentifier("input"), node.input ? _serializeMethod(node.input, factory, importsMapper, PRETTY) : factory.createIdentifier('undefined'))
 				);
+				// Resolver
 				if((node as ObjectField).resolver){
 					let fieldObjFields: ts.ObjectLiteralElementLike[]= [];
 					nodeProperties.push(
@@ -75,7 +77,7 @@ export function serializeAST<T extends ModelNode|RootModel>(root: T, factory: ts
 				break;
 			case ModelKind.METHOD:
 				nodeProperties.push(
-					factory.createPropertyAssignment( factory.createIdentifier("method"), factory.createIdentifier(node.method) )
+					factory.createPropertyAssignment( factory.createIdentifier("method"), node.method ? _serializeMethod(node.method, factory, importsMapper, PRETTY) : factory.createIdentifier('undefined') )
 				);
 				break;
 			// case ModelKind.REF:
@@ -100,7 +102,7 @@ export function serializeAST<T extends ModelNode|RootModel>(root: T, factory: ts
 			case ModelKind.UNION:
 				nodeProperties.push(
 					// factory.createPropertyAssignment(factory.createIdentifier("parser"), node.parser)
-					factory.createPropertyAssignment(factory.createIdentifier("parser"), factory.createIdentifier(node.parser))
+					factory.createPropertyAssignment(factory.createIdentifier("parser"), _serializeMethod(node.parser, factory, importsMapper, PRETTY))
 				);
 				break;
 			// case ModelKind.DIRECTIVE:
@@ -110,4 +112,38 @@ export function serializeAST<T extends ModelNode|RootModel>(root: T, factory: ts
 		}
 	}
 	return result;
+}
+
+
+function _serializeMethod(method: MethodDescriptor, factory: ts.NodeFactory, importsMapper: Map<string, Map<string, ts.Identifier>>, pretty: boolean){
+	if(typeof method==='string')
+		return factory.createIdentifier(method);
+	else{
+		var fMap= importsMapper.get(method.fileName);
+		if(!fMap) importsMapper.set(method.fileName, fMap= new Map());
+		var uniqueN= fMap.get(method.className);
+		if(!uniqueN){
+			uniqueN= factory.createUniqueName(method.className);
+			fMap.set(method.className, uniqueN);
+		}
+		var result:ts.Expression;
+		if(!method.name)
+			result= uniqueN;
+		else if(method.isStatic)
+			result= factory.createPropertyAccessChain(uniqueN, undefined, method.name);
+		else
+			result= factory.createPropertyAccessChain(
+				factory.createPropertyAccessChain(uniqueN, undefined, 'prototype'),
+				undefined,
+				method.name
+			)
+		return result;
+	}
+	
+	// return factory.createObjectLiteralExpression([
+	// 	factory.createPropertyAssignment( factory.createIdentifier("fileName"), factory.createStringLiteral(method.fileName)),
+	// 	factory.createPropertyAssignment( factory.createIdentifier("className"), factory.createStringLiteral(method.className)),
+	// 	factory.createPropertyAssignment( factory.createIdentifier("name"), factory.createStringLiteral(method.name)),
+	// 	factory.createPropertyAssignment( factory.createIdentifier("isStatic"), method.isStatic ? factory.createTrue(): factory.createFalse())
+	// ], pretty);
 }

@@ -39,12 +39,15 @@ export enum ModelKind{
 	/** Scalar */
 	SCALAR,
 
+	/** Basic scalar */
+	BASIC_SCALAR,
+
 	/** jsDoc directive */
 	DIRECTIVE
 }
 
 /** Model node */
-export type ModelNode = ModelRoot| ModelObjectNode | ConstNode | ModelEnumNode | EnumMember | ModelListNode | ModelRefNode | ModelUnionNode | ObjectField | ModelMethod | ModelParam | ModelScalarNode<any> | ModelPromiseNode | RootModel
+export type ModelNode = ModelRoot| ModelObjectNode | ConstNode | ModelEnumNode | EnumMember | ModelListNode | ModelRefNode | ModelUnionNode | ObjectField | ModelMethod | ModelParam | ModelScalarNode<any> | ModelBasicScalar | ModelPromiseNode | RootModel
 
 /** Model node AST */
 export interface ModelBaseNode{
@@ -95,7 +98,7 @@ export interface ModelListNode extends ModelNodeWithChilds{
 /** Union of multiple kinds */
 export interface ModelUnionNode extends ModelBaseNode{
 	kind:		ModelKind.UNION
-	parser:		string
+	parser:		MethodDescriptor
 }
 
 /** Reference */
@@ -111,7 +114,7 @@ export interface ObjectField extends ModelNodeWithChilds{
 	/** Output Resolver */
 	resolver:	ModelMethod|undefined
 	/** Input resolver */
-	input:		string|undefined
+	input:		MethodDescriptor|undefined
 }
 
 /** Enum member */
@@ -132,8 +135,20 @@ export const MethodAttr= Symbol('method');
 export interface ModelMethod extends ModelBaseNode{
 	kind:	ModelKind.METHOD
 	// method:	ts.MethodDeclaration // method declaration
-	method: string,
-	children: [ModelNode|undefined, ModelNode|undefined]
+	method:		MethodDescriptor,
+	children:	[ModelNode|undefined, ModelNode|undefined]
+}
+
+export type MethodDescriptor= MethodDescriptorI | string
+export interface MethodDescriptorI{
+	/** File name */
+	fileName:	string
+	/** class name */
+	className:	string
+	/** Field name */
+	name:		string|undefined
+	/** is prototype or static method */
+	isStatic:	boolean
 }
 
 // /** jsDoc directive */
@@ -179,7 +194,11 @@ export interface ModelParam extends ModelNodeWithChilds{
 /** Scalar node */
 export interface ModelScalarNode<T> extends ModelBaseNode{
 	kind:	ModelKind.SCALAR
-	parser: string
+	parser: MethodDescriptor
+}
+
+export interface ModelBasicScalar extends ModelBaseNode{
+	kind: ModelKind.BASIC_SCALAR
 }
 
 /** Simplified node with childs */
