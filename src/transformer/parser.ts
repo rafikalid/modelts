@@ -30,6 +30,8 @@ export function ParseModelFrom(pathPattern:string, compilerOptions: ts.CompilerO
 	//* Create program
 	const program= ts.createProgram(files, compilerOptions, pHost);
 	const typeChecker= program.getTypeChecker();
+	const namelessEntities: NamelessEntity[]= [];
+	const referenceMap: Map<string, ts.TypeReferenceNode>= new Map();
 
 	//* Step 1: parse AST
 	const visitor= new Visitor<ts.Node>();
@@ -37,29 +39,102 @@ export function ParseModelFrom(pathPattern:string, compilerOptions: ts.CompilerO
 	for(i=0, len=srcFiles.length; i<len; ++i){
 		srcFile= srcFiles[i];
 		if(srcFile.isDeclarationFile) continue;
-		//* Import tockens
-		const importTokens: ImportTokens={
-			tsModel:			undefined,
-			Model:				undefined,
-			ModelScalar:		undefined,
-			UNION:				undefined,
-			ignore:				undefined,
-			assert:				undefined,
-			ResolversOf:		undefined,
-			InputResolversOf:	undefined
-		};
 		// Push to iterator
-		visitor.push(srcFile.getChildren(), undefined, false, resolve(srcFile.fileName), importTokens, undefined);
+		visitor.push(srcFile.getChildren(), undefined, false);
 	}
-	_parseNode(visitor, typeChecker, root);
+	_parseNode(visitor, typeChecker, root, true, namelessEntities, (node, nodeName)=>{
+		referenceMap.set(nodeName, node);
+	});
 	
-	// TODO
-	// const typeChecker= program.getTypeChecker();
+	//* Add default scalars
+	var i: number, len: number, fieldName;
+	const entities= root.children;
+	for(i=0, len=  DEFAULT_SCALARS.length; i<len; ++i){
+		fieldName= DEFAULT_SCALARS[i];
+		if(!mapEntities.hasOwnProperty(fieldName)){
+			entities.push(mapEntities[fieldName]= {
+				kind: ModelKind.BASIC_SCALAR,
+				name: fieldName,
+				jsDoc: undefined
+			});
+		}
+	}
+
+	//* Resolve references
+	visitor.clear();
+	function _resolveReference(node: ts.TypeReferenceNode, nodeName: string){
+		// fieldName= nodeSymbol.name;
+		if(!mapEntities.hasOwnProperty(nodeName)) {
+			console.log('*', nodeName)
+			var nodeType= typeChecker.getTypeAtLocation(node);
+			if(node.typeArguments?.length){
+				var properties= nodeType.getProperties();
+				if(properties.length){
+					var currentNode: ModelObjectNode={
+						kind: ModelKind.PLAIN_OBJECT,
+						name: nodeName,
+						jsDoc: undefined,
+						children: [],
+						mapChilds: {},
+						isClass: true
+					};
+					entities.push(mapEntities[nodeName]= currentNode);
+					console.log(nodeName, '>>');
+					properties.forEach(function(p){
+						var t= typeChecker.getTypeOfSymbolAtLocation(p, p.valueDeclaration!);
+						console.log('---------', p.name, ':',typeChecker.typeToString(t));
+					});
+				} else {
+					throw new Error(`Unsupported generic type: ${nodeName}`);
+				}
+			} else {
+				visitor.push(nodeType.symbol.getDeclarations()?.[0], undefined, false);
+			}
+			// var nodeType= typeChecker.getTypeFromTypeNode(node);
+			// // visitor.push(nodeType, undefined, false, undefined)
+			// nodeType.getProperties().forEach(function(p){
+			// 	var t= typeChecker.getTypeOfSymbolAtLocation(p, p.valueDeclaration!);
+			// 	//FIXME here -------------------------
+			// 	// (p.declarations as ts.TypeReferenceNode).typeName.getText();
+			// 	console.log('---', p.name)
+			// 	console.log('::',typeChecker.typeToString(t))
+			// });
+		}
+	}
+	referenceMap.forEach(_resolveReference);
+	_parseNode(visitor, typeChecker, root, true, namelessEntities, _resolveReference);
+
+	//* Resolve nameless nodes
+	const namelessMap:Map<string, number>= new Map();
+	for(i=0, len=namelessEntities.length; i<len; ++i){
+		let item= namelessEntities[i];
+		let itemName= item.name??'Entity';
+		let itemI;
+		let tmpn= itemName;
+		while(mapEntities[itemName]){
+			if(namelessMap.has(tmpn)) itemI= namelessMap.get(tmpn);
+			else{
+				itemI= 1;
+				namelessMap.set(tmpn, itemI);
+			}
+			itemName= `${tmpn}_${i}`;
+		}
+		item.node.name= itemName;
+		mapEntities[itemName]= item.node;
+		item.ref.name= itemName; 
+	}
 	return result;
 }
 
 /** Parse each node */
-function _parseNode(visitor:Visitor<ts.Node>, typeChecker: ts.TypeChecker, root: ModelRoot){
+function _parseNode(
+		visitor:Visitor<ts.Node>,
+		typeChecker: ts.TypeChecker,
+		root: ModelRoot,
+		exportRequired: boolean,
+		namelessEntities: NamelessEntity[],
+		resolveReference: (node: ts.TypeReferenceNode, fieldName: string)=> void
+	){
 	const it= visitor.it();
 	var currentNode: ModelNode, nodeName: string;
 	var meta: GetNodeMatadataReturn;
@@ -69,49 +144,49 @@ function _parseNode(visitor:Visitor<ts.Node>, typeChecker: ts.TypeChecker, root:
 	var fieldName: string;
 	var ref: ModelRefNode|ModelPromiseNode;
 	var pkind: ModelKind;
-	const namelessEntities: NamelessEntity[]= [];
-	const referenceMap: Map<string, ts.TypeReferenceNode>= new Map();
 	// Go though nodes
 	while(true){
 		var item= it.next();
 		if(item.done) break; 
-		var {node, parentDescriptor: pDesc, isInput, fileName, importTokens, generics}= item.value;
+		var {node, parentDescriptor: pDesc, isInput}= item.value;
+		var fileName= node.getSourceFile().fileName;
 		nodeType = typeChecker.getTypeAtLocation(node);
 		nodeSymbol = nodeType.getSymbol();
 		switch(node.kind){
 			case ts.SyntaxKind.SyntaxList:
-				visitor.push(node.getChildren(), pDesc, isInput, fileName, importTokens, generics);
+				visitor.push(node.getChildren(), pDesc, isInput);
 				break;
-			case ts.SyntaxKind.ImportDeclaration:
-				//* Import declarations
-				if ((node as ts.ImportDeclaration).moduleSpecifier.getText() === PACKAGE_NAME) {
-					(node as ts.ImportDeclaration).importClause?.namedBindings?.forEachChild(n=>{
-						if(ts.isImportSpecifier(n)){
-							let key= (n.propertyName??n.name).getText();
-							if(importTokens.hasOwnProperty(key))
-								importTokens[key as keyof ImportTokens] = n.name.getText();
-						}
-					});
-				}
-				break;
+			// case ts.SyntaxKind.ImportDeclaration:
+			// 	//* Import declarations
+			// 	if ((node as ts.ImportDeclaration).moduleSpecifier.getText() === PACKAGE_NAME) {
+			// 		(node as ts.ImportDeclaration).importClause?.namedBindings?.forEachChild(n=>{
+			// 			if(ts.isImportSpecifier(n)){
+			// 				let key= (n.propertyName??n.name).getText();
+			// 				if(importTokens.hasOwnProperty(key))
+			// 					importTokens[key as keyof ImportTokens] = n.name.getText();
+			// 			}
+			// 		});
+			// 	}
+			// 	break;
 			case ts.SyntaxKind.InterfaceDeclaration:
 			case ts.SyntaxKind.ClassDeclaration:
 				//* Class or Interface entity
 				//  Skip entities without "Export" keyword
-				if (node.getFirstToken()?.kind !== ts.SyntaxKind.ExportKeyword) continue;
-				meta= _getNodeMetadata(node, nodeSymbol, typeChecker, importTokens);
+				if (exportRequired && node.getFirstToken()?.kind !== ts.SyntaxKind.ExportKeyword) continue;
+				meta= _getNodeMetadata(node, nodeSymbol, typeChecker);
 				// Get entity name
 				nodeName= (node as any).name?.getText();
 				let hasResolvers = false;
 				if (ts.isClassDeclaration(node) && node.heritageClauses){
 					hasResolvers= node.heritageClauses.some(
 						n=>n.types.some(function(t){
-							var txt= t.expression.getText();
-							if(txt===importTokens.ResolversOf){
+							var s= typeChecker.getSymbolAtLocation(t.expression);
+							var txt= s?.name;
+							if(txt==='ResolversOf'){
 								isInput= false;
 								nodeName= t.typeArguments![0].getText();
 								return true;
-							} else if(txt=== importTokens.InputResolversOf){
+							} else if(txt=== 'InputResolversOf'){
 								isInput= true;
 								nodeName= t.typeArguments![0].getText();
 								return true;
@@ -142,14 +217,14 @@ function _parseNode(visitor:Visitor<ts.Node>, typeChecker: ts.TypeChecker, root:
 				// Go through fields
 				nodeType.getProperties().forEach(function({valueDeclaration}){
 					if(valueDeclaration)
-						visitor.push(valueDeclaration, currentNode, isInput, fileName, importTokens, generics);
+						visitor.push(valueDeclaration, currentNode, isInput);
 				});
 				break;
 			case ts.SyntaxKind.PropertyDeclaration:
 			case ts.SyntaxKind.PropertySignature:
 				//* Property declaration
 				if(!pDesc) continue;
-				meta= _getNodeMetadata(node, nodeSymbol,typeChecker, importTokens);
+				meta= _getNodeMetadata(node, nodeSymbol,typeChecker);
 				if(meta.ignore) continue;
 				if (pDesc.kind !== ModelKind.PLAIN_OBJECT)
 					throw new Error(`Expected parent as Plain object. Got ${ModelKind[pDesc.kind]} at ${fileName}::${node.getText()}`);
@@ -170,13 +245,13 @@ function _parseNode(visitor:Visitor<ts.Node>, typeChecker: ts.TypeChecker, root:
 				// Push to parent
 				pDesc.children.push(pDesc.mapChilds[fieldName]= currentNode);
 				// Go through childs
-				visitor.push(node.getChildren(), currentNode, isInput, fileName, importTokens, generics);
+				visitor.push(node.getChildren(), currentNode, isInput);
 				break;
 			case ts.SyntaxKind.MethodDeclaration:
 				//* Method declaration
 				if(!pDesc) continue;
 				if(!nodeSymbol) throw new Error(`Expected method symbol at ${fileName}::${node.getText()}`);
-				meta= _getNodeMetadata(node, nodeSymbol,typeChecker, importTokens);
+				meta= _getNodeMetadata(node, nodeSymbol,typeChecker);
 				if(meta.ignore) continue;
 				if (pDesc.kind !== ModelKind.PLAIN_OBJECT)
 					throw new Error(`Expected parent as Plain object. Got ${ModelKind[pDesc.kind]} at ${fileName}::${node.getText()}`);
@@ -202,7 +277,7 @@ function _parseNode(visitor:Visitor<ts.Node>, typeChecker: ts.TypeChecker, root:
 					resolverMethod= {
 						kind:		ModelKind.METHOD,
 						name:		fieldName,
-						jsDoc:		meta.jsDoc,
+						jsDoc:		undefined,
 						// method:		node as ts.MethodDeclaration,
 						method:		{
 							fileName:	node.getSourceFile().fileName,
@@ -228,14 +303,14 @@ function _parseNode(visitor:Visitor<ts.Node>, typeChecker: ts.TypeChecker, root:
 				};
 				// Add to parent
 				pDesc.children.push(pDesc.mapChilds[fieldName!] = currentNode);
-				// Go through childs
-				visitor.push(node.getChildren(), resolverMethod || currentNode, isInput, fileName, importTokens, generics);
 				// Go through arg param
 				if(!isInput){
 					let params = (node as ts.MethodDeclaration).parameters;
 					if (params && params[1])
-						visitor.push(params[1], resolverMethod, isInput, fileName, importTokens, generics);
+						visitor.push(params[1], resolverMethod, isInput);
 				}
+				// Go through results
+				visitor.push((node as ts.MethodDeclaration).type , resolverMethod || currentNode, isInput);
 				break;
 			case ts.SyntaxKind.Parameter:
 				// Method parameter
@@ -249,13 +324,13 @@ function _parseNode(visitor:Visitor<ts.Node>, typeChecker: ts.TypeChecker, root:
 				};
 				pDesc.children[1] = currentNode;
 				// Parse param type
-				visitor.push((node as ts.ParameterDeclaration).type, currentNode, isInput, fileName, importTokens, generics);
+				visitor.push((node as ts.ParameterDeclaration).type, currentNode, isInput);
 				break;
 			case ts.SyntaxKind.EnumDeclaration:
 				//* Enumeration
 				//  Skip entities without "Export" keyword
-				if (node.getFirstToken()?.kind !== ts.SyntaxKind.ExportKeyword) continue;
-				meta= _getNodeMetadata(node, nodeSymbol, typeChecker, importTokens);
+				if (exportRequired && node.getFirstToken()?.kind !== ts.SyntaxKind.ExportKeyword) continue;
+				meta= _getNodeMetadata(node, nodeSymbol, typeChecker);
 				if(meta.ignore || !(pDesc || meta.tsModel)) continue;
 				nodeName= (node as ts.EnumDeclaration).name.getText();
 				// get entity
@@ -276,13 +351,13 @@ function _parseNode(visitor:Visitor<ts.Node>, typeChecker: ts.TypeChecker, root:
 					}
 				}
 				// Go through fields
-				visitor.push(node.getChildren(), currentNode, isInput, fileName, importTokens, generics);
+				visitor.push(node.getChildren(), currentNode, isInput);
 				break;
 			case ts.SyntaxKind.EnumMember:
 				//* Enum member
 				if(!pDesc || pDesc.kind!==ModelKind.ENUM)
 					throw new Error(`Expected Enum as parent. Got ${pDesc?ModelKind[pDesc.kind]: 'nothing'}`);
-				meta= _getNodeMetadata(node, nodeSymbol, typeChecker, importTokens);
+				meta= _getNodeMetadata(node, nodeSymbol, typeChecker);
 				fieldName= (node as ts.EnumMember).name.getText();
 				currentNode = {
 					kind:		ModelKind.ENUM_MEMBER,
@@ -300,8 +375,8 @@ function _parseNode(visitor:Visitor<ts.Node>, typeChecker: ts.TypeChecker, root:
 			case ts.SyntaxKind.VariableStatement:
 				//* Scalars
 				//  Skip entities without "Export" keyword
-				if (node.getFirstToken()?.kind !== ts.SyntaxKind.ExportKeyword) continue;
-				meta= _getNodeMetadata(node, nodeSymbol,typeChecker, importTokens);
+				if (exportRequired && node.getFirstToken()?.kind !== ts.SyntaxKind.ExportKeyword) continue;
+				meta= _getNodeMetadata(node, nodeSymbol, typeChecker);
 				if(meta.ignore) continue;
 				(node as ts.VariableStatement).declarationList.declarations.forEach(function(n){
 					var type= n.type;
@@ -309,43 +384,46 @@ function _parseNode(visitor:Visitor<ts.Node>, typeChecker: ts.TypeChecker, root:
 					if(type && ts.isTypeReferenceNode(type) && type.typeArguments?.length===1){
 						let typeArg= type.typeArguments[0];
 						fieldName= typeArg.getText();
-						switch(type.typeName.getText()){
-							case importTokens.ModelScalar:
-								//* Scalar
-								if(!ts.isTypeReferenceNode(typeArg))
-									throw new Error(`Enexpected scalar name: "${fieldName}" at ${fileName}::${typeArg.getStart()}`);
-								if(mapEntities[fieldName])
-									throw new Error(`Already defined entity ${fieldName} at ${fileName}: ${typeArg.getStart()}`);
-								entities.push(mapEntities[fieldName]={
-									kind:		ModelKind.SCALAR,
-									name:		fieldName,
-									jsDoc:		meta.jsDoc,
-									parser:		{
-										fileName:	node.getSourceFile().fileName,
-										className:	nodeName,
-										isStatic:	true,
-										name:		undefined
-									}
-								});
-								break;
-							case importTokens.UNION:
-								//* Union
-								if(!ts.isTypeReferenceNode(typeArg))
-									throw new Error(`Enexpected UNION name: "${fieldName}" at ${fileName}::${typeArg.getStart()}`);
-								if(mapEntities[fieldName])
-									throw new Error(`Already defined entity ${fieldName} at ${fileName}: ${typeArg.getStart()}`);
-								entities.push(mapEntities[fieldName]={
-									kind:		ModelKind.UNION,
-									name:		fieldName,
-									jsDoc:		meta.jsDoc,
-									parser:		{
-										fileName:	node.getSourceFile().fileName,
-										className:	nodeName,
-										isStatic:	true,
-										name:		undefined
-									}
-								});
-								break;
+						let s= typeChecker.getSymbolAtLocation(type.typeName);
+						if(s){
+							switch(s.name){
+								case 'ModelScalar':
+									//* Scalar
+									if(!ts.isTypeReferenceNode(typeArg))
+										throw new Error(`Enexpected scalar name: "${fieldName}" at ${fileName}::${typeArg.getStart()}`);
+									if(mapEntities[fieldName])
+										throw new Error(`Already defined entity ${fieldName} at ${fileName}: ${typeArg.getStart()}`);
+									entities.push(mapEntities[fieldName]={
+										kind:		ModelKind.SCALAR,
+										name:		fieldName,
+										jsDoc:		meta.jsDoc,
+										parser:		{
+											fileName:	node.getSourceFile().fileName,
+											className:	nodeName,
+											isStatic:	true,
+											name:		undefined
+										}
+									});
+									break;
+								case 'UNION':
+									//* Union
+									if(!ts.isTypeReferenceNode(typeArg))
+										throw new Error(`Enexpected UNION name: "${fieldName}" at ${fileName}::${typeArg.getStart()}`);
+									if(mapEntities[fieldName])
+										throw new Error(`Already defined entity ${fieldName} at ${fileName}: ${typeArg.getStart()}`);
+									entities.push(mapEntities[fieldName]={
+										kind:		ModelKind.UNION,
+										name:		fieldName,
+										jsDoc:		meta.jsDoc,
+										parser:		{
+											fileName:	node.getSourceFile().fileName,
+											className:	nodeName,
+											isStatic:	true,
+											name:		undefined
+										}
+									});
+									break;
+							}
 						}
 					}
 				});
@@ -376,7 +454,7 @@ function _parseNode(visitor:Visitor<ts.Node>, typeChecker: ts.TypeChecker, root:
 				// Go through fields
 				nodeType.getProperties().forEach(function({valueDeclaration}){
 					if(valueDeclaration)
-						visitor.push(valueDeclaration, currentNode, isInput, fileName, importTokens, generics);
+						visitor.push(valueDeclaration, currentNode, isInput);
 				});
 				break;
 			case ts.SyntaxKind.UnionType:
@@ -390,18 +468,18 @@ function _parseNode(visitor:Visitor<ts.Node>, typeChecker: ts.TypeChecker, root:
 						else
 							tp= n;
 					});
-					if(tp) visitor.push(tp, pDesc, isInput, fileName, importTokens, generics);
+					if(tp) visitor.push(tp, pDesc, isInput);
 				}
 				break;
 			case ts.SyntaxKind.TypeOperator:
-				visitor.push((node as ts.TypeOperatorNode).type, pDesc, isInput, fileName, importTokens, generics);
+				visitor.push((node as ts.TypeOperatorNode).type, pDesc, isInput);
 				break;
 			case ts.SyntaxKind.TypeReference:
 				//* Type reference
 				if(!pDesc) continue;
 				pkind= pDesc.kind;
-				if(pkind!==ModelKind.FIELD && pkind!==ModelKind.LIST && pkind!==ModelKind.METHOD && pkind!==ModelKind.PARAM){
-					console.warn(`>> Escaped ${ts.SyntaxKind[node.kind]} at ${node.getStart()}`);
+				if(pkind!==ModelKind.FIELD && pkind!==ModelKind.LIST && pkind!==ModelKind.METHOD && pkind!==ModelKind.PARAM && pkind!==ModelKind.PROMISE){
+					console.warn(`>> Escaped ${ts.SyntaxKind[node.kind]} from parent ${ModelKind[pkind]}: ${node.parent.getText()} at ${fileName}`);
 					continue;
 				}
 				if(nodeSymbol && nodeSymbol.name === 'Promise'){
@@ -411,34 +489,13 @@ function _parseNode(visitor:Visitor<ts.Node>, typeChecker: ts.TypeChecker, root:
 						jsDoc: undefined,
 						children: []
 					};
-					visitor.push((node as ts.TypeReferenceNode).typeArguments!, ref, isInput, fileName, importTokens, generics);
+					visitor.push((node as ts.TypeReferenceNode).typeArguments!, ref, isInput);
 				} else {
 					fieldName= node.getText();
-					if(!mapEntities[fieldName] && !referenceMap.has(fieldName)){
-						referenceMap.set(fieldName, node as ts.TypeReferenceNode);
+					if(!mapEntities[fieldName]){
+						resolveReference(node as ts.TypeReferenceNode, fieldName);
 					}
 				}
-
-				//TODO
-				// typeChecker.isImplementationOfOverload(node as ts.TypeReferenceNode)
-				// if(fileName === 'Promise'){
-				// } else if(nodeSymbol) {
-				// 	// Resolve name
-				// 	(node as ts.TypeReferenceNode).typeArguments?.forEach
-				// 	// ref
-				// 	ref={
-				// 		kind:		ModelKind.REF,
-				// 		name:		fieldName,
-				// 		jsDoc:		undefined,
-				// 		directives:	undefined
-				// 	};
-
-				// 	if ((node as ts.TypeReferenceNode).typeArguments?.length && !mapEntities[fieldName]){} else {
-
-				// 	}
-				// }
-				
-				// pDesc.children[0] = resolveReference(node as ts.TypeReferenceNode, isInput, generics);
 				break;
 			case ts.SyntaxKind.StringKeyword:
 			case ts.SyntaxKind.BooleanKeyword:
@@ -448,8 +505,8 @@ function _parseNode(visitor:Visitor<ts.Node>, typeChecker: ts.TypeChecker, root:
 				// Predefined scalars
 				if(pDesc){
 					pkind= pDesc.kind;
-					if(pkind!==ModelKind.FIELD && pkind!==ModelKind.LIST && pkind!==ModelKind.METHOD && pkind!==ModelKind.PARAM){
-						console.warn(`>> Escaped ${ts.SyntaxKind[node.kind]} at ${node.getStart()}`);
+					if(pkind!==ModelKind.FIELD && pkind!==ModelKind.LIST && pkind!==ModelKind.METHOD && pkind!==ModelKind.PARAM && pkind!==ModelKind.PROMISE){
+						console.warn(`>> Escaped ${ts.SyntaxKind[node.kind]} from parent ${ModelKind[pkind]}: ${node.parent.getText()} at ${fileName}`);
 						continue;
 					}
 					currentNode={
@@ -463,8 +520,8 @@ function _parseNode(visitor:Visitor<ts.Node>, typeChecker: ts.TypeChecker, root:
 			case ts.SyntaxKind.ArrayType:
 				if(pDesc==null) continue;
 				pkind= pDesc.kind;
-				if(pkind!==ModelKind.FIELD && pkind!==ModelKind.LIST && pkind!==ModelKind.METHOD && pkind!==ModelKind.PARAM){
-					console.warn(`>> Escaped ${ts.SyntaxKind[node.kind]} at ${node.getStart()}`);
+				if(pkind!==ModelKind.FIELD && pkind!==ModelKind.LIST && pkind!==ModelKind.METHOD && pkind!==ModelKind.PARAM && pkind!==ModelKind.PROMISE){
+					console.warn(`>> Escaped ${ts.SyntaxKind[node.kind]} from parent ${ModelKind[pkind]}: ${node.parent.getText()} at ${fileName}`);
 					continue;
 				}
 				currentNode = {
@@ -475,7 +532,7 @@ function _parseNode(visitor:Visitor<ts.Node>, typeChecker: ts.TypeChecker, root:
 				};
 				(pDesc as ModelNodeWithChilds).children[0] = currentNode;
 				// Go through childs
-				visitor.push((node as ts.ArrayTypeNode).elementType, currentNode, isInput, fileName, importTokens, generics);
+				visitor.push((node as ts.ArrayTypeNode).elementType, currentNode, isInput);
 				break;
 			case ts.SyntaxKind.TupleType:
 				// Type type
@@ -483,61 +540,10 @@ function _parseNode(visitor:Visitor<ts.Node>, typeChecker: ts.TypeChecker, root:
 				break;
 		}
 	}
-
-	//* Add default scalars
-	var i: number, len: number;
-	for(i=0, len=  DEFAULT_SCALARS.length; i<len; ++i){
-		fieldName= DEFAULT_SCALARS[i];
-		if(!mapEntities.hasOwnProperty(fieldName)){
-			entities.push(mapEntities[fieldName]= {
-				kind: ModelKind.BASIC_SCALAR,
-				name: fieldName,
-				jsDoc: undefined
-			});
-		}
-	}
-
-	//* Resolve references
-	referenceMap.forEach(function(node, nodeName){
-		// if((node as ts.TypeReferenceNode).typeArguments){}
-		// fieldName= nodeSymbol.name;
-		console.log('Resolve reference >>', node.getText());
-		if(!mapEntities.hasOwnProperty(nodeName)) {
-			console.log('----------- define ------------')
-			var nodeType= typeChecker.getTypeFromTypeNode(node);
-			nodeType.getProperties().forEach(function(p){
-				var t= typeChecker.getTypeOfSymbolAtLocation(p, p.valueDeclaration!);
-				//FIXME here -------------------------
-				// (p.declarations as ts.TypeReferenceNode).typeName.getText();
-				console.log('---', p.name)
-				console.log('::',typeChecker.typeToString(t))
-			});
-		}
-	});
-	
-	//* Resolve nameless nodes
-	const namelessMap:Map<string, number>= new Map();
-	for(i=0, len=namelessEntities.length; i<len; ++i){
-		let item= namelessEntities[i];
-		let itemName= item.name??'Entity';
-		let itemI;
-		let tmpn= itemName;
-		while(mapEntities[itemName]){
-			if(namelessMap.has(tmpn)) itemI= namelessMap.get(tmpn);
-			else{
-				itemI= 1;
-				namelessMap.set(tmpn, itemI);
-			}
-			itemName= `${tmpn}_${i}`;
-		}
-		item.node.name= itemName;
-		mapEntities[itemName]= item.node;
-		item.ref.name= itemName; 
-	}
 }
 
 /** Get field or entity informations */
-function _getNodeMetadata(node: ts.Node, nodeSymbol: ts.Symbol | undefined, typeChecker: ts.TypeChecker, importTokens: ImportTokens){
+function _getNodeMetadata(node: ts.Node, nodeSymbol: ts.Symbol | undefined, typeChecker: ts.TypeChecker){
 	const result: GetNodeMatadataReturn= {
 		ignore:		false,
 		tsModel:	false,
@@ -555,7 +561,7 @@ function _getNodeMetadata(node: ts.Node, nodeSymbol: ts.Symbol | undefined, type
 		return result;
 	// Load jsDoc tags
 	var directives= [];
-	var jsDoc: string[]= [];
+	var jsDoc: string[];
 	var assertTxt: string;
 	const asserts: string[]= [];
 	if(nodeSymbol){
@@ -567,7 +573,7 @@ function _getNodeMetadata(node: ts.Node, nodeSymbol: ts.Symbol | undefined, type
 				let tagName= tag.name;
 				if(tagName==null) continue;
 				switch(tagName){
-					case importTokens.assert:
+					case 'assert':
 						// FIXME check using multiple lines for jsdoc tag
 						if(tag.text){
 							assertTxt= tag.text.map(e=> e.text).join(', ');
@@ -575,10 +581,10 @@ function _getNodeMetadata(node: ts.Node, nodeSymbol: ts.Symbol | undefined, type
 							asserts.push(`[${assertTxt}]`);
 						}
 						break;
-					case importTokens.tsModel:
+					case 'tsModel':
 						result.tsModel= true;
 						break;
-					case importTokens.ignore:
+					case 'ignore':
 						result.ignore= true;
 						break;
 				}
@@ -594,7 +600,8 @@ function _getNodeMetadata(node: ts.Node, nodeSymbol: ts.Symbol | undefined, type
 		for(i=0, len= decos.length; i<len; ++i){
 			decoExp= decos[i].expression as ts.CallExpression;
 			directives.push(decoExp.getText());
-			if(decoExp.expression.getText()===importTokens.assert){
+			let s= typeChecker.getSymbolAtLocation(decoExp.expression);
+			if(s?.name==='assert'){
 				asserts.push(`[${decoExp.arguments.map(a=> a.getText()).join(',')}]`)
 			}
 		}

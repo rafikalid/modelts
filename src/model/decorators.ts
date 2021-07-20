@@ -19,6 +19,10 @@ export interface AssertOptions{
 	lte?:		number
 	/** greater than or equals value, arr.length or string.length */
 	gte?:		number
+	/** Value equals */
+	eq?:		number|string
+	/** Value not equals */
+	ne?:		number|string
 	/** arr.length or string.length */
 	length?:	number
 	/** Regular expression */

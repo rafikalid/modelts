@@ -7,12 +7,6 @@ export interface VisitorEntities<T>{
 	parentDescriptor: 	ModelNode|undefined
 	/** Distinguish methods if are input or output resolvers */
 	isInput: boolean
-	/** Generic types mapping */
-	generics: Map<string, ts.TypeNode>|undefined
-	/** Current file name */
-	fileName:	string
-	/** Current file import tokens */
-	importTokens: ImportTokens
 }
 
 /** Visitor pattern using generators */
@@ -28,7 +22,7 @@ export class Visitor<T>{
 		}
 	}
 	/** Push items */
-	push(nodes: T | readonly T[]|undefined, parentDescriptor: ModelNode|undefined, isInput: boolean, fileName: string, importTokens: ImportTokens, generics?: Map<string, ts.TypeNode>) {
+	push(nodes: T | readonly T[]|undefined, parentDescriptor: ModelNode|undefined, isInput: boolean) {
 		var queue= this._queue;
 		if(Array.isArray(nodes)){
 			var i, len;
@@ -36,10 +30,7 @@ export class Visitor<T>{
 				queue.push({
 					node: nodes[i],
 					parentDescriptor,
-					isInput,
-					fileName,
-					importTokens,
-					generics
+					isInput
 				});
 			}
 		} else if(nodes!= null) {
@@ -47,12 +38,16 @@ export class Visitor<T>{
 				//@ts-ignore
 				node: nodes,
 				parentDescriptor,
-				isInput,
-				fileName,
-				importTokens,
-				generics
+				isInput
 			});
 		}
+		return this;
+	}
+	/**
+	 * Clear visitor
+	 */
+	clear(){
+		this._queue.length= 0;
 		return this;
 	}
 }
