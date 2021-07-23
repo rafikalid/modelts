@@ -106,7 +106,7 @@ export function serializeAST(root: ModelRoot, factory: ts.NodeFactory, importsMa
 			case ModelKind.UNION:
 				nodeProperties.push(
 					// factory.createPropertyAssignment(factory.createIdentifier("parser"), node.parser)
-					factory.createPropertyAssignment(factory.createIdentifier("parser"), _serializeMethod(node.parser, factory, importsMapper, PRETTY))
+					factory.createPropertyAssignment(factory.createIdentifier("parser"), _serializeMethod(node.parser as MethodDescriptor, factory, importsMapper, PRETTY))
 				);
 				break;
 			// case ModelKind.DIRECTIVE:

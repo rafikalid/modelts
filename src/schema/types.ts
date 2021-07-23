@@ -1,5 +1,5 @@
-/** default scalars */
-export const DEFAULT_SCALARS= [ 'number', 'uInt', 'uFloat', 'string', 'boolean' ];
+/** default scalars: int */
+export const DEFAULT_SCALARS= [ 'number', 'Int', 'uInt', 'uFloat', 'string', 'boolean' ] as const;
 
 /** Integers */
 export type Int= number;
@@ -26,7 +26,7 @@ export interface ModelScalar<T>{
 /** Unions */
 export interface UNION<Types>{
 	// Return the index of target type
-	resolveType: (value: Types, info?: any)=> number
+	resolveType: (value: Types, context?: any, info?: any)=> number
 }
 
 //* Custom scalars
@@ -48,6 +48,16 @@ export const uIntScalar: ModelScalar<uInt>= {
 			return value;
 		else
 			throw new Error(`Illegal unsigned int: ${value}`);
+	}
+};
+
+/** Unsigned integer */
+export const intScalar: ModelScalar<Int>= {
+	parse(value){
+		if(typeof value === 'number' && Number.isSafeInteger(value))
+			return value;
+		else
+			throw new Error(`Illegal int: ${value}`);
 	}
 };
 

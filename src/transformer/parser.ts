@@ -1,4 +1,4 @@
-import { ModelKind, ModelNode, ModelRoot, ObjectField, ModelObjectNode, ModelRefNode, ModelPromiseNode, ModelNodeWithChilds } from "@src/schema/model";
+import { ModelKind, ModelNode, ModelRoot, ObjectField, ModelObjectNode, ModelRefNode, ModelNodeWithChilds } from "@src/schema/model";
 import ts from "typescript";
 import Glob from 'glob';
 import { Visitor } from "@src/utils/utils";
@@ -14,6 +14,7 @@ export function ParseModelFrom(pathPattern:string, compilerOptions: ts.CompilerO
 		kind: ModelKind.ROOT,
 		name: undefined,
 		jsDoc: undefined,
+		deprecated: undefined,
 		children: [],
 		mapChilds: {}
 	}
@@ -54,7 +55,8 @@ export function ParseModelFrom(pathPattern:string, compilerOptions: ts.CompilerO
 			entities.push(mapEntities[fieldName]= {
 				kind: ModelKind.BASIC_SCALAR,
 				name: fieldName,
-				jsDoc: undefined
+				jsDoc: undefined,
+				deprecated: undefined
 			});
 		}
 	}
@@ -99,7 +101,7 @@ function _parseNode(
 	var nodeType: ts.Type;
 	var {children: entities, mapChilds: mapEntities}= root;
 	var fieldName: string;
-	var ref: ModelRefNode|ModelPromiseNode;
+	var ref: ModelRefNode;
 	var pkind: ModelKind;
 	// Go though nodes
 	while(true){
@@ -150,6 +152,7 @@ function _parseNode(
 						name:		nodeName,
 						kind:		ModelKind.PLAIN_OBJECT,
 						jsDoc:		meta.jsDoc,
+						deprecated: meta.deprecated,
 						children:	[],
 						mapChilds:	{},
 						isClass:	nodeType.isClass()
@@ -184,6 +187,8 @@ function _parseNode(
 					jsDoc:		meta.jsDoc,
 					required:	!(node as ts.PropertySignature).questionToken,
 					children:	[],
+					deprecated: meta.deprecated,
+					defaultValue: meta.defaultValue,
 					asserts:	meta.asserts,
 					resolver:	undefined,
 					input:		undefined
@@ -223,6 +228,7 @@ function _parseNode(
 						kind:		ModelKind.METHOD,
 						name:		fieldName,
 						jsDoc:		undefined,
+						deprecated: undefined,
 						// method:		node as ts.MethodDeclaration,
 						method:		{
 							fileName:	node.getSourceFile().fileName,
@@ -232,7 +238,7 @@ function _parseNode(
 						},
 						// method: `${parentDescriptor.oName??parentDescriptor.name}.prototype.${fieldName}`,
 						/** [ResultType, ParamType] */
-						children:	[undefined, undefined],
+						children:	[undefined, undefined]
 					};
 				}
 				// Current node
@@ -240,8 +246,10 @@ function _parseNode(
 					kind:		ModelKind.FIELD,
 					name:		fieldName,
 					jsDoc:		meta.jsDoc,
+					deprecated: meta.deprecated,
 					required:	!(node as ts.MethodDeclaration).questionToken,
 					children:	[],
+					defaultValue: meta.defaultValue,
 					asserts:	meta.asserts,
 					resolver:	resolverMethod,
 					input:		inputResolver
@@ -265,6 +273,7 @@ function _parseNode(
 					kind: ModelKind.PARAM,
 					name: (node as ts.ParameterDeclaration).name.getText(),
 					jsDoc: undefined,
+					deprecated: undefined,
 					children: []
 				};
 				pDesc.children[1] = currentNode;
@@ -288,6 +297,7 @@ function _parseNode(
 						name:		nodeName,
 						kind:		ModelKind.ENUM,
 						jsDoc:		meta.jsDoc,
+						deprecated: meta.deprecated,
 						children:	[],
 						mapChilds:	{}
 					};
@@ -309,6 +319,7 @@ function _parseNode(
 					kind:		ModelKind.ENUM_MEMBER,
 					name:		fieldName,
 					jsDoc:		meta.jsDoc,
+					deprecated: meta.deprecated,
 					required:	true,
 					value:		typeChecker.getConstantValue(node as ts.EnumMember)
 					// value:		(node as ts.EnumMember).initializer?.getText()
@@ -344,6 +355,7 @@ function _parseNode(
 										kind:		ModelKind.SCALAR,
 										name:		fieldName,
 										jsDoc:		meta.jsDoc,
+										deprecated: meta.deprecated,
 										parser:		{
 											fileName:	node.getSourceFile().fileName,
 											className:	nodeName,
@@ -358,16 +370,24 @@ function _parseNode(
 										throw new Error(`Enexpected UNION name: "${fieldName}" at ${fileName}::${typeArg.getStart()}`);
 									if(mapEntities[fieldName])
 										throw new Error(`Already defined entity ${fieldName} at ${fileName}: ${typeArg.getStart()}`);
-									entities.push(mapEntities[fieldName]={
+									currentNode= {
 										kind:		ModelKind.UNION,
 										name:		fieldName,
 										jsDoc:		meta.jsDoc,
+										deprecated: meta.deprecated,
+										children:	[],
 										parser:		{
 											fileName:	node.getSourceFile().fileName,
 											className:	nodeName,
 											isStatic:	true,
 											name:		undefined
 										}
+									};
+									entities.push(mapEntities[fieldName]= currentNode);
+									// Parse members
+									const typeTypeArg= typeChecker.getTypeAtLocation(typeArg);
+									typeTypeArg.getBaseTypes()?.forEach(t=>{
+										console.log('UNION: ', t.symbol.name);
 									});
 									break;
 							}
@@ -383,6 +403,7 @@ function _parseNode(
 					name:		undefined,
 					kind:		ModelKind.PLAIN_OBJECT,
 					jsDoc:		undefined,
+					deprecated: undefined,
 					children:	[],
 					mapChilds:	{},
 					isClass:	false
@@ -390,7 +411,8 @@ function _parseNode(
 				ref={
 					kind: ModelKind.REF,
 					name: undefined,
-					jsDoc: undefined
+					jsDoc: undefined,
+					deprecated: undefined
 				};
 				namelessEntities.push({
 					name:	pDesc.name,
@@ -430,20 +452,19 @@ function _parseNode(
 					&& pkind!==ModelKind.LIST
 					&& pkind!==ModelKind.METHOD
 					&& pkind!==ModelKind.PARAM
-					&& pkind!==ModelKind.PROMISE
 				){
 					console.warn(`>> Escaped ${ts.SyntaxKind[node.kind]} from parent ${ModelKind[pkind]}: ${node.parent.getText()} at ${fileName}`);
 					continue;
 				}
 				if(nodeType.getSymbol()?.name === 'Promise'){
-					currentNode={
-						kind: ModelKind.PROMISE,
-						name: undefined,
-						jsDoc: undefined,
-						children: []
-					};
-					(pDesc as ObjectField).children.push(currentNode);
-					visitor.push((node as ts.TypeReferenceNode).typeArguments!, currentNode, isInput, generics);
+					// currentNode={
+					// 	kind: ModelKind.PROMISE,
+					// 	name: undefined,
+					// 	jsDoc: undefined,
+					// 	children: []
+					// };
+					// (pDesc as ObjectField).children.push(currentNode);
+					visitor.push((node as ts.TypeReferenceNode).typeArguments!, pDesc, isInput, generics);
 				} else if(visitor === refVisitor) {
 					// Add reference
 					let targetRef= (node as ts.TypeReferenceNode);
@@ -461,11 +482,12 @@ function _parseNode(
 					} else {
 						nodeName= targetRef.getText();
 					}
-					(pDesc as ObjectField).children.push({
+					(pDesc as ObjectField).children[0]= {
 						kind: ModelKind.REF,
 						name: nodeName,
-						jsDoc: undefined
-					});
+						jsDoc: undefined,
+						deprecated: undefined
+					};
 		
 					if(mapEntities[nodeName]==null){
 						// TODO add jsDoc resolver
@@ -478,6 +500,7 @@ function _parseNode(
 							kind: ModelKind.PLAIN_OBJECT,
 							name: nodeName,
 							jsDoc: undefined,
+							deprecated: undefined,
 							children: [],
 							mapChilds: {},
 							isClass: true
@@ -516,14 +539,15 @@ function _parseNode(
 				// Predefined scalars
 				if(pDesc){
 					pkind= pDesc.kind;
-					if(pkind!==ModelKind.FIELD && pkind!==ModelKind.LIST && pkind!==ModelKind.METHOD && pkind!==ModelKind.PARAM && pkind!==ModelKind.PROMISE){
+					if(pkind!==ModelKind.FIELD && pkind!==ModelKind.LIST && pkind!==ModelKind.METHOD && pkind!==ModelKind.PARAM){
 						console.warn(`>> Escaped ${ts.SyntaxKind[node.kind]} from parent ${ModelKind[pkind]}: ${node.parent.getText()} at ${fileName}`);
 						continue;
 					}
 					currentNode={
 						kind: ModelKind.REF,
 						name: node.getText(),
-						jsDoc: undefined
+						jsDoc: undefined,
+						deprecated: undefined
 					};
 					(pDesc as ObjectField).children[0] = currentNode;
 				}
@@ -531,7 +555,7 @@ function _parseNode(
 			case ts.SyntaxKind.ArrayType:
 				if(pDesc==null) continue;
 				pkind= pDesc.kind;
-				if(pkind!==ModelKind.FIELD && pkind!==ModelKind.LIST && pkind!==ModelKind.METHOD && pkind!==ModelKind.PARAM && pkind!==ModelKind.PROMISE){
+				if(pkind!==ModelKind.FIELD && pkind!==ModelKind.LIST && pkind!==ModelKind.METHOD && pkind!==ModelKind.PARAM){
 					console.warn(`>> Escaped ${ts.SyntaxKind[node.kind]} from parent ${ModelKind[pkind]}: ${node.parent.getText()} at ${fileName}`);
 					continue;
 				}
@@ -539,6 +563,7 @@ function _parseNode(
 					kind:	ModelKind.LIST,
 					name:	undefined,
 					jsDoc:	undefined,
+					deprecated: undefined,
 					children: []
 				};
 				(pDesc as ModelNodeWithChilds).children[0] = currentNode;
@@ -559,8 +584,11 @@ function _getNodeMetadata(node: ts.Node, typeChecker: ts.TypeChecker){
 		ignore:		false,
 		tsModel:	false,
 		jsDoc:		undefined,
+		defaultValue: undefined,
+		deprecated: undefined,
 		asserts:	undefined
 	}
+	//TODO add default value
 	var a: any;
 	var i, len;
 	// Ignore field if has "private" or "protected" keywords
@@ -599,6 +627,12 @@ function _getNodeMetadata(node: ts.Node, typeChecker: ts.TypeChecker){
 				case 'ignore':
 					result.ignore= true;
 					break;
+				case 'deprecated':
+					tagText= tag.comment;
+					if(Array.isArray(tagText))
+						tagText= tagText.map((l: ts.JSDocText)=> l.text).join("\n");
+					result.deprecated= `${tagText}`;
+					break;
 			}
 		}
 	}
@@ -619,6 +653,9 @@ function _getNodeMetadata(node: ts.Node, typeChecker: ts.TypeChecker){
 					break;
 				case 'ignore':
 					result.ignore= true;
+					break;
+				case 'deprecated':
+					result.deprecated= decoExp.arguments.map(a => a.getText()).join(',');
 					break;
 			}
 		}
@@ -643,6 +680,8 @@ interface GetNodeMatadataReturn{
 	ignore: boolean
 	tsModel: boolean
 	jsDoc:	string|undefined
+	deprecated: string|undefined
+	defaultValue: any
 	asserts: AssertOptions|undefined
 }
 

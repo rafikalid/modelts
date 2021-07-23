@@ -1,4 +1,5 @@
-import { ModelRoot } from "@src/schema/model";
+import { toGraphql } from "@src/graphql";
+import { ModelNode, ModelRoot } from "@src/schema/model";
 
 // const DEFINE_SCALAR_NAME_REGEX= /^\w{,50}$/;
 
@@ -12,13 +13,14 @@ export class Model{
 		}
 		this.AST= ast;
 		// create map
-		// var mapChilds= ast.mapChilds= {} as Record<string, ModelNode>;
-		// var childs= ast.children;
-		// var i, len;
-		// for (i = 0, len= childs.length; i < len; i++) {
-		// 	const child = childs[i];
-		// 	mapChilds[child.name!]= child;
-		// }
+		ast.mapChilds= {};
+		var mapChilds= ast.mapChilds;
+		var childs= ast.children, child: ModelNode;
+		var i, len;
+		for (i = 0, len= childs.length; i < len; i++) {
+			child = childs[i];
+			mapChilds[child.name!]= child;
+		}
 	}
 
 	// /** Define new scalar */
@@ -69,9 +71,11 @@ export class Model{
 	// 	return new Model(root);
 	// }
 
-	/** export Graphql */
-	asGraphQL(){
-		const ast= this.AST;
+	/**
+	 * Convert Model into graphql
+	 */
+	toGraphQL(){
+		toGraphql(this.AST);
 	}
 }
 

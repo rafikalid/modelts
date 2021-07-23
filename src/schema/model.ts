@@ -1,4 +1,5 @@
 import { AssertOptions } from "@src/model/decorators";
+import { ModelScalar, UNION } from "./types";
 
 /** Model kinds */
 export enum ModelKind{
@@ -22,8 +23,8 @@ export enum ModelKind{
 	/** Reference to an other Model node */
 	REF,
 
-	/** Promise */
-	PROMISE,
+	// /** Promise */
+	// PROMISE,
 
 	/** Field */
 	FIELD,
@@ -45,7 +46,7 @@ export enum ModelKind{
 }
 
 /** Model node */
-export type ModelNode = ModelRoot| ModelObjectNode | ConstNode | ModelEnumNode | EnumMember | ModelListNode | ModelRefNode | ModelUnionNode | ObjectField | ModelMethod | ModelParam | ModelScalarNode<any> | ModelBasicScalar | ModelPromiseNode | RootModel
+export type ModelNode = ModelRoot| ModelObjectNode | ConstNode | ModelEnumNode | EnumMember | ModelListNode | ModelRefNode | ModelUnionNode | ObjectField | ModelMethod | ModelParam | ModelScalarNode<any> | ModelBasicScalar
 
 /** Model node AST */
 export interface ModelBaseNode{
@@ -53,6 +54,8 @@ export interface ModelBaseNode{
 	kind:		ModelKind
 	/** Comment */
 	jsDoc:		string | undefined
+	/** Deprecated */
+	deprecated:	string | undefined
 }
 
 /** Const value */
@@ -66,10 +69,10 @@ export interface ModelNodeWithChilds extends ModelBaseNode{
 	children:	ModelNode[]
 }
 
-/** Promise node */
-export interface ModelPromiseNode extends ModelNodeWithChilds{
-	kind: ModelKind.PROMISE
-}
+// /** Promise node */
+// export interface ModelPromiseNode extends ModelNodeWithChilds{
+// 	kind: ModelKind.PROMISE
+// }
 
 /** Object node */
 export interface ModelObjectNode extends ModelNodeWithChilds{
@@ -94,7 +97,8 @@ export interface ModelListNode extends ModelNodeWithChilds{
 /** Union of multiple kinds */
 export interface ModelUnionNode extends ModelBaseNode{
 	kind:		ModelKind.UNION
-	parser:		MethodDescriptor
+	parser:		MethodDescriptor|UNION<any>
+	children:	ModelRefNode[]
 }
 
 /** Reference */
@@ -111,6 +115,8 @@ export interface ObjectField extends ModelNodeWithChilds{
 	resolver:	ModelMethod|undefined
 	/** Input resolver */
 	input:		MethodDescriptor|undefined
+	/** Default value */
+	defaultValue: any
 	/** Input Assert */
 	asserts:	AssertOptions|undefined
 }
@@ -162,15 +168,6 @@ export interface ImportTokens{
 	InputResolversOf:	string|undefined
 };
 
-/** Model base class @deprecated */
-export interface RootModel extends ModelBaseNode{
-	kind:		ModelKind.ROOT
-	children:	ModelNode[],
-	mapChilds:	Record<string, ModelNode>
-	/** Import tokens */
-	_tokens: ImportTokens
-}
-
 /** Root model */
 export interface ModelRoot extends ModelBaseNode{
 	kind:		ModelKind.ROOT
@@ -186,7 +183,7 @@ export interface ModelParam extends ModelNodeWithChilds{
 /** Scalar node */
 export interface ModelScalarNode<T> extends ModelBaseNode{
 	kind:	ModelKind.SCALAR
-	parser: MethodDescriptor
+	parser: MethodDescriptor | ModelScalar<T>
 }
 
 export interface ModelBasicScalar extends ModelBaseNode{
