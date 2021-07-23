@@ -75,7 +75,7 @@ export class Model{
 	 * Convert Model into graphql
 	 */
 	toGraphQL(){
-		toGraphql(this.AST);
+		return toGraphql(this.AST);
 	}
 }
 
