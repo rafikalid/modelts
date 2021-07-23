@@ -107,8 +107,8 @@ export function toGraphql(ast: ModelRoot){
 
 	return {
 		Query: mapOutputEntities.get(entitiesMap.Query)?.node,
-		Mutation: mapOutputEntities.get(entitiesMap.Query)?.node,
-		Inscription: mapOutputEntities.get(entitiesMap.Query)?.node
+		Mutation: mapOutputEntities.get(entitiesMap.Mutation)?.node,
+		Inscription: mapOutputEntities.get(entitiesMap.Inscription)?.node
 	};
 	/** Map graphql nodes */
 	interface mapFieldsItem {
