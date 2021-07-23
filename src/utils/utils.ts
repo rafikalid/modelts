@@ -1,12 +1,17 @@
 import { ImportTokens, ModelBaseNode, ModelNode } from "@src/schema/model";
 import ts from "typescript";
 
+/** Generics map */
+export type GenericsMap= Map<string, ts.TypeReferenceNode>;
+
 /** Interface */
 export interface VisitorEntities<T>{
 	node: T
 	parentDescriptor: 	ModelNode|undefined
 	/** Distinguish methods if are input or output resolvers */
 	isInput: boolean
+	/** generic refrences */
+	generics: GenericsMap| undefined
 }
 
 /** Visitor pattern using generators */
@@ -22,7 +27,7 @@ export class Visitor<T>{
 		}
 	}
 	/** Push items */
-	push(nodes: T | readonly T[]|undefined, parentDescriptor: ModelNode|undefined, isInput: boolean) {
+	push(nodes: T | readonly T[]|undefined, parentDescriptor: ModelNode|undefined, isInput: boolean, generics: GenericsMap| undefined) {
 		var queue= this._queue;
 		if(Array.isArray(nodes)){
 			var i, len;
@@ -30,7 +35,8 @@ export class Visitor<T>{
 				queue.push({
 					node: nodes[i],
 					parentDescriptor,
-					isInput
+					isInput,
+					generics
 				});
 			}
 		} else if(nodes!= null) {
@@ -38,7 +44,8 @@ export class Visitor<T>{
 				//@ts-ignore
 				node: nodes,
 				parentDescriptor,
-				isInput
+				isInput,
+				generics
 			});
 		}
 		return this;

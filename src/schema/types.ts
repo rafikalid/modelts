@@ -16,7 +16,7 @@ export interface ModelScalar<T>{
 	/** Parse value */
 	parse?: (value: JsonTypes)=> T
 	/** Stringify value */
-	serialize?: (value: T)=> JsonTypes
+	serialize?: (value: T)=> JsonTypes|undefined|null
 	/** Load from Database */
 	fromDB?: (value:any)=> T
 	/** Save into database */

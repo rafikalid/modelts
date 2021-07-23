@@ -10,7 +10,7 @@ import ts from "typescript";
  * @param factory 
  * @param PRETTY 
  */
-export function compileAsserts(name: string | undefined, asserts: AssertOptions, type: ModelNode, factory: ts.NodeFactory, PRETTY: boolean): ts.MethodDeclaration {
+export function compileAsserts(name: string | undefined, asserts: AssertOptions, type: ModelNode, factory: ts.NodeFactory, PRETTY: boolean): ts.MethodDeclaration|undefined {
 	// Arr
 	const numberChecks: ts.Statement[]= [];
 	const elseChecks: ts.Statement[]= [
@@ -55,19 +55,19 @@ export function compileAsserts(name: string | undefined, asserts: AssertOptions,
 	//eq
 	v= asserts.eq;
 	if(v!=null){
-		numberChecks.push( _ifThrow(factory, 'value', ts.SyntaxKind.EqualsEqualsEqualsToken, v, `Expected ${name} === ${v}`) );
-		elseChecks.push( _ifThrow(factory, 'value', ts.SyntaxKind.EqualsEqualsEqualsToken, v, `Expected ${name} === ${v}`) );
+		numberChecks.push( _ifThrow(factory, 'value', ts.SyntaxKind.ExclamationEqualsEqualsToken, v, `Expected ${name} === ${v}`) );
+		elseChecks.push( _ifThrow(factory, 'value', ts.SyntaxKind.ExclamationEqualsEqualsToken, v, `Expected ${name} === ${v}`) );
 	}
 	//ne
 	v= asserts.ne;
 	if(v!=null){
-		numberChecks.push( _ifThrow(factory, 'value', ts.SyntaxKind.ExclamationEqualsEqualsToken, v, `Expected ${name} !== ${v}`) );
-		elseChecks.push( _ifThrow(factory, 'value', ts.SyntaxKind.ExclamationEqualsEqualsToken, v, `Expected ${name} !== ${v}`) );
+		numberChecks.push( _ifThrow(factory, 'value', ts.SyntaxKind.EqualsEqualsEqualsToken, v, `Expected ${name} !== ${v}`) );
+		elseChecks.push( _ifThrow(factory, 'value', ts.SyntaxKind.EqualsEqualsEqualsToken, v, `Expected ${name} !== ${v}`) );
 	}
 	// length
 	v= asserts.length
 	if(v!=null){
-		elseChecks.push( _ifThrow(factory, 'len', ts.SyntaxKind.EqualsEqualsEqualsToken, v, `Expected ${name}.length === ${v}`) );
+		elseChecks.push( _ifThrow(factory, 'len', ts.SyntaxKind.ExclamationEqualsEqualsToken, v, `Expected ${name}.length === ${v}`) );
 	}
 	// regex
 	if(asserts.regex!=null){
@@ -93,28 +93,31 @@ export function compileAsserts(name: string | undefined, asserts: AssertOptions,
 	}
 
 	// return
-	return factory.createMethodDeclaration( undefined, undefined, undefined,
-		factory.createIdentifier("asserts"), undefined, undefined,
-		// Argument
-		[factory.createParameterDeclaration(
-			undefined, undefined, undefined, factory.createIdentifier("value"),
-			undefined, factory.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword), undefined
-		)], undefined,
-		factory.createBlock([
-			factory.createIfStatement(
-				// If is Number
-				factory.createBinaryExpression(
-					factory.createTypeOfExpression(factory.createIdentifier("value")),
-					factory.createToken(ts.SyntaxKind.EqualsEqualsEqualsToken),
-					factory.createStringLiteral("number")
-				),
-				// If true
-				factory.createBlock(numberChecks, PRETTY ),
-				// Else
-				factory.createBlock(elseChecks, PRETTY)
-			)
-		], PRETTY)
-	);  
+	if(numberChecks.length===0 && elseChecks.length===1)
+		return undefined;
+	else
+		return factory.createMethodDeclaration( undefined, undefined, undefined,
+			factory.createIdentifier("asserts"), undefined, undefined,
+			// Argument
+			[factory.createParameterDeclaration(
+				undefined, undefined, undefined, factory.createIdentifier("value"),
+				undefined, factory.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword), undefined
+			)], undefined,
+			factory.createBlock([
+				factory.createIfStatement(
+					// If is Number
+					factory.createBinaryExpression(
+						factory.createTypeOfExpression(factory.createIdentifier("value")),
+						factory.createToken(ts.SyntaxKind.EqualsEqualsEqualsToken),
+						factory.createStringLiteral("number")
+					),
+					// If true
+					factory.createBlock(numberChecks, PRETTY ),
+					// Else
+					factory.createBlock(elseChecks, PRETTY)
+				)
+			], PRETTY)
+		);
 }
 
 /** Generate lines */

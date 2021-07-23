@@ -1,4 +1,3 @@
-import { AssertOptions } from "@src/model/decorators";
 import { MethodDescriptor, ModelKind, ModelNode, ModelNodeWithChilds, ModelRoot, ObjectField } from "@src/schema/model";
 import ts from "typescript";
 import { compileAsserts } from "./ast-compile-assert";
@@ -59,9 +58,9 @@ export function serializeAST(root: ModelRoot, factory: ts.NodeFactory, importsMa
 				);
 				// Asserts
 				nodeProperties.push(
-					node.asserts ?
+					node.asserts &&
 						compileAsserts(node.name, node.asserts, node.children[0], factory, PRETTY)
-						: factory.createPropertyAssignment(
+						|| factory.createPropertyAssignment(
 							factory.createIdentifier("asserts"),
 					 		factory.createIdentifier('undefined')
 						)
