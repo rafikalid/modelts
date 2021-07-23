@@ -105,6 +105,11 @@ export function toGraphql(ast: ModelRoot){
 		}
 	}
 
+	return {
+		Query: mapOutputEntities.get(entitiesMap.Query)?.node,
+		Mutation: mapOutputEntities.get(entitiesMap.Query)?.node,
+		Inscription: mapOutputEntities.get(entitiesMap.Query)?.node
+	};
 	/** Map graphql nodes */
 	interface mapFieldsItem {
 		fields:	any,
@@ -144,6 +149,7 @@ export function toGraphql(ast: ModelRoot){
 								fields: fields
 							})
 						};
+						queue.push({entity, isInput});
 						mapInputEntities.set(entity, result);
 					}
 				} else if(!(result= mapOutputEntities.get(entity))){
@@ -156,6 +162,7 @@ export function toGraphql(ast: ModelRoot){
 							fields:	fields
 						})
 					}
+					queue.push({entity, isInput});
 					mapOutputEntities.set(entity, result);
 				}
 				break;
@@ -170,6 +177,7 @@ export function toGraphql(ast: ModelRoot){
 							values: fields
 						})
 					};
+					queue.push({entity, isInput});
 					mapOutputEntities.set(entity, result);
 				}
 				break;
@@ -188,6 +196,7 @@ export function toGraphql(ast: ModelRoot){
 							}
 						})
 					};
+					queue.push({entity, isInput});
 					mapOutputEntities.set(entity, result);
 				}
 				break;
@@ -203,6 +212,7 @@ export function toGraphql(ast: ModelRoot){
 							serialize:		scalarParser.serialize
 						})
 					};
+					queue.push({entity, isInput});
 					mapOutputEntities.set(entity, result);
 				}
 				break;
@@ -212,6 +222,7 @@ export function toGraphql(ast: ModelRoot){
 						fields: undefined,
 						node: GraphqlBasicScalars[entity.name! as keyof typeof GraphqlBasicScalars]
 					};
+					queue.push({entity, isInput});
 					mapOutputEntities.set(entity, result);
 				}
 				break;
@@ -253,28 +264,27 @@ export function toGraphql(ast: ModelRoot){
 	function _resolverArgs(resolver: ModelMethod, field: ObjectField, entity: ModelObjectNode){
 		var result: GraphQLFieldConfigArgumentMap|undefined;
 		var ref= resolver.children[1];
-		if(!ref) throw new Error(`Missing resolver argument at ${field.name}.${entity.name}!`);
+		if(!ref) return;
 		if(ref.kind !== ModelKind.PARAM) throw new Error(`Resolver argument expected PARAM, got ${ModelKind[ref.kind]} at ${field.name}.${entity.name}`);
 		ref= ref.children[0];
-		if(ref){
-			result= {};
-			if(ref.kind !== ModelKind.REF) throw new Error(`Param type expected REF, got ${ModelKind[ref.kind]} at ${field.name}.${entity.name}`);
-	
-			var node= entitiesMap[ref.name!];
-			if(!node)
-				throw new Error(`Missing entity ${ref.name} as Resolver arg at ${field.name}.${entity.name}`);
-			if(node.kind !== ModelKind.PLAIN_OBJECT)
-				throw new Error(`Expected plain object as resolver's argument. Got ${node.name} as ${ModelKind[node.kind]}. at ${field.name}.${entity.name}`);
-			var childs= node.children, i=0, len= childs.length, child: ObjectField;
-			while(i<len){
-				child= childs[i++] as ObjectField;
-				result[child.name!]= {
-					type:	_resolveFieldType(child, true, node) as GraphQLInputType,
-					deprecationReason:	child.deprecated,
-					defaultValue:		child.defaultValue,
-					description:		child.jsDoc
-				};
-			}
+		if(!ref) return;
+		result= {};
+		if(ref.kind !== ModelKind.REF) throw new Error(`Param type expected REF, got ${ModelKind[ref.kind]} at ${field.name}.${entity.name}`);
+
+		var node= entitiesMap[ref.name!];
+		if(!node)
+			throw new Error(`Missing entity ${ref.name} as Resolver arg at ${field.name}.${entity.name}`);
+		if(node.kind !== ModelKind.PLAIN_OBJECT)
+			throw new Error(`Expected plain object as resolver's argument. Got ${node.name} as ${ModelKind[node.kind]}. at ${field.name}.${entity.name}`);
+		var childs= node.children, i=0, len= childs.length, child: ObjectField;
+		while(i<len){
+			child= childs[i++] as ObjectField;
+			result[child.name!]= {
+				type:	_resolveFieldType(child, true, node) as GraphQLInputType,
+				deprecationReason:	child.deprecated,
+				defaultValue:		child.defaultValue,
+				description:		child.jsDoc
+			};
 		}
 		return result;
 	}
