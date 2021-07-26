@@ -1,6 +1,6 @@
-import { ModelRoot, ModelNode, ModelKind, EnumMember, ObjectField, ModelListNode, ModelRefNode, ModelMethod, ModelObjectNode } from "@src/schema/model";
+import { ModelRoot, ModelNode, ModelKind, EnumMember, ObjectField, ModelListNode, ModelMethod, ModelObjectNode } from "@src/schema/model";
 import { DEFAULT_SCALARS, ModelScalar, uFloatScalar, uIntScalar, UNION } from "@src/schema/types";
-import { graphql, GraphQLBoolean, GraphQLEnumType, GraphQLEnumValueConfigMap, GraphQLFieldConfig, GraphQLFieldConfigArgumentMap, GraphQLFieldConfigMap, GraphQLFloat, GraphQLInputFieldMap, GraphQLInputObjectType, GraphQLInputType, GraphQLInt, GraphQLList, GraphQLNonNull, GraphQLObjectType, GraphQLOutputType, GraphQLScalarType, GraphQLString, GraphQLType, GraphQLUnionType } from 'graphql';
+import { GraphQLBoolean, GraphQLEnumType, GraphQLEnumValueConfigMap, GraphQLFieldConfigArgumentMap, GraphQLFieldConfigMap, GraphQLFloat, GraphQLInputFieldMap, GraphQLInputObjectType, GraphQLInputType, GraphQLInt, GraphQLList, GraphQLNonNull, GraphQLObjectType, GraphQLOutputType, GraphQLScalarType, GraphQLSchema, GraphQLString, GraphQLType, GraphQLUnionType } from 'graphql';
 
 /** Graphql basic scalars */
 const GraphqlBasicScalars: {[p in typeof DEFAULT_SCALARS[number]]: GraphQLScalarType}={
@@ -39,10 +39,10 @@ export function toGraphql(ast: ModelRoot){
 	// Add interface nodes
 	if(entity= entitiesMap.Query) queue.push({entity, isInput: false});
 	if(entity= entitiesMap.Mutation) queue.push({entity, isInput: false});
-	if(entity= entitiesMap.Inscription) queue.push({entity, isInput: false});
+	if(entity= entitiesMap.Subscription) queue.push({entity, isInput: false});
 	// Loop
 	var i=0;
-	var j:number, jlen: number, childs: ModelNode[], child: ModelNode;
+	var j:number, jlen: number, childs: ModelNode[], child: ModelNode, childName: string;
 	var fields: any;
 	while(i< queue.length){
 		var {entity, isInput}= queue[i++];
@@ -54,11 +54,12 @@ export function toGraphql(ast: ModelRoot){
 					const objFields: GraphQLInputFieldMap= fields;
 					for(j=0, jlen= childs.length; j<jlen; ++j){
 						child= childs[j];
-						objFields[child.name!]={
+						childName= child.name!;
+						objFields[childName]={
 							type:				_resolveFieldType(child as ObjectField, isInput, entity) as GraphQLInputType,
 							description:		child.jsDoc,
 							defaultValue:		(child as ObjectField).defaultValue,
-							name:				child.name!,
+							name:				childName,
 							deprecationReason:	child.deprecated,
 							extensions:			undefined
 						};
@@ -105,11 +106,11 @@ export function toGraphql(ast: ModelRoot){
 		}
 	}
 
-	return {
-		Query: mapOutputEntities.get(entitiesMap.Query)?.node,
-		Mutation: mapOutputEntities.get(entitiesMap.Mutation)?.node,
-		Inscription: mapOutputEntities.get(entitiesMap.Inscription)?.node
-	};
+	return new GraphQLSchema({
+		query: mapOutputEntities.get(entitiesMap.Query)?.node as GraphQLObjectType,
+		mutation: mapOutputEntities.get(entitiesMap.Mutation)?.node as GraphQLObjectType,
+		subscription: mapOutputEntities.get(entitiesMap.Subscription)?.node as GraphQLObjectType
+	});
 	/** Map graphql nodes */
 	interface mapFieldsItem {
 		fields:	any,
@@ -117,7 +118,7 @@ export function toGraphql(ast: ModelRoot){
 	}
 	/** get entity name */
 	function _getEntityName(entity: ModelNode, isInput: boolean){
-		var entityName= entity.name!;
+		var entityName= _formatName(entity.name!);
 		while(entityNameSet.has(entityName)){
 			entityName += isInput ? 'Input': 'Output';
 		}
@@ -172,7 +173,7 @@ export function toGraphql(ast: ModelRoot){
 					result={
 						fields,
 						node: new GraphQLEnumType({
-							name:	entity.name!,
+							name:	_formatName(entity.name!),
 							description: entity.jsDoc,
 							values: fields
 						})
@@ -188,7 +189,7 @@ export function toGraphql(ast: ModelRoot){
 					result= {
 						fields: types,
 						node: new GraphQLUnionType({
-							name:	entity.name!,
+							name:	_formatName(entity.name!),
 							description: entity.jsDoc,
 							types:	types,
 							resolveType(value, ctx, info){
@@ -206,7 +207,7 @@ export function toGraphql(ast: ModelRoot){
 					result={
 						fields: undefined,
 						node: new GraphQLScalarType({
-							name:			entity.name!,
+							name:			_formatName(entity.name!),
 							description:	entity.jsDoc,
 							parseValue:		scalarParser.parse,
 							serialize:		scalarParser.serialize
@@ -279,7 +280,7 @@ export function toGraphql(ast: ModelRoot){
 		var childs= node.children, i=0, len= childs.length, child: ObjectField;
 		while(i<len){
 			child= childs[i++] as ObjectField;
-			result[child.name!]= {
+			result[_formatName(child.name!)]= {
 				type:	_resolveFieldType(child, true, node) as GraphQLInputType,
 				deprecationReason:	child.deprecated,
 				defaultValue:		child.defaultValue,
@@ -288,4 +289,9 @@ export function toGraphql(ast: ModelRoot){
 		}
 		return result;
 	}
+}
+
+/** Format name to respect Graphql recommandations */
+function _formatName(name: string){
+	return name.replace(/[<>_]/g, '');
 }

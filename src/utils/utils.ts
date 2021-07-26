@@ -57,4 +57,9 @@ export class Visitor<T>{
 		this._queue.length= 0;
 		return this;
 	}
+
+	/** Length */
+	get length(){
+		return this._queue.length;
+	}
 }

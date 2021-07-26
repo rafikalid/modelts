@@ -1,5 +1,5 @@
 import { ModelKind, ModelNode, ModelRoot, ObjectField, ModelObjectNode, ModelRefNode, ModelNodeWithChilds } from "@src/schema/model";
-import ts from "typescript";
+import ts, { factory } from "typescript";
 import Glob from 'glob';
 import { Visitor } from "@src/utils/utils";
 import { DEFAULT_SCALARS } from "@src/schema/types";
@@ -60,10 +60,9 @@ export function ParseModelFrom(pathPattern:string, compilerOptions: ts.CompilerO
 			});
 		}
 	}
-
 	//* Resolve references
 	_parseNode(refVisitor, refVisitor, typeChecker, root, true, namelessEntities);
-
+	console.log('--- resovle nameless items')
 	//* Resolve nameless nodes
 	const namelessMap:Map<string, number>= new Map();
 	for(i=0, len=namelessEntities.length; i<len; ++i){
@@ -385,10 +384,12 @@ function _parseNode(
 									};
 									entities.push(mapEntities[fieldName]= currentNode);
 									// Parse members
-									const typeTypeArg= typeChecker.getTypeAtLocation(typeArg);
-									typeTypeArg.getBaseTypes()?.forEach(t=>{
-										console.log('UNION: ', t.symbol.name);
-									});
+									const ss= typeChecker.getSymbolAtLocation(typeArg.typeName);
+									console.log('---*-', ts.SyntaxKind[ss?.valueDeclaration?.kind!])
+									//-------------------------------------------------------------------------- here 
+									// typeTypeArg.getBaseTypes()?.forEach(t=>{
+									// 	console.log('UNION: ', t.symbol.name);
+									// });
 									break;
 							}
 						}
@@ -492,29 +493,15 @@ function _parseNode(
 					if(mapEntities[nodeName]==null){
 						// TODO add jsDoc resolver
 						let refType= typeChecker.getTypeAtLocation(targetRef);
-						let properties= refType.getProperties();
-						if(!properties.length)
-							throw new Error(`Generic type "${targetRef.getText()}" has no fields! at ${node.getSourceFile().fileName}`);
-						// node
-						currentNode={
-							kind: ModelKind.PLAIN_OBJECT,
-							name: nodeName,
-							jsDoc: undefined,
-							deprecated: undefined,
-							children: [],
-							mapChilds: {},
-							isClass: true
-						};
-						entities.push(mapEntities[nodeName]= currentNode);
-						
+						let s= refType.symbol.declarations?.[0]
+						if(!s)
+							throw new Error(`Fail to find declaration for ${targetRef.getText()} at ${node.getSourceFile().fileName}`);
+						// console.log('---- reference: ', nodeName, ts.SyntaxKind[node.kind]);
+
 						// resolve generics
-						if((node as ts.TypeReferenceNode).typeArguments?.length){
+						let nodeArgs= (node as ts.TypeReferenceNode).typeArguments;
+						if(nodeArgs?.length){
 							generics= new Map(generics!);
-							let refType= typeChecker.getTypeAtLocation(targetRef);
-							let s= refType.symbol.declarations?.[0]
-							if(!s)
-								throw new Error(`Fail to find declaration for ${targetRef.getText()} at ${node.getSourceFile().fileName}`);
-							let nodeArgs= (node as ts.TypeReferenceNode).typeArguments!;
 							let targetArgs= (s as ts.InterfaceDeclaration).typeParameters!
 							for(let i=0, len= nodeArgs.length; i<len; ++i){
 								let ref= nodeArgs[i] as ts.TypeReferenceNode;
@@ -522,10 +509,47 @@ function _parseNode(
 								generics.set(tParam, generics?.get(ref.getText())??ref)
 							}
 						}
-						properties.forEach(e=>{
-							if(e.valueDeclaration)
-								refVisitor.push(e.valueDeclaration, currentNode, false, generics);
-						})
+
+						switch(s.kind){
+							case ts.SyntaxKind.EnumMember:
+								s= s.parent as ts.EnumDeclaration;
+							case ts.SyntaxKind.EnumDeclaration:
+								// node
+								currentNode={
+									kind: ModelKind.ENUM,
+									name: nodeName,
+									jsDoc: undefined,
+									deprecated: undefined,
+									children: [],
+									mapChilds: {}
+								};
+								refVisitor.push(s.getChildren(), currentNode, isInput, generics);
+								break;
+							case ts.SyntaxKind.InterfaceDeclaration:
+							case ts.SyntaxKind.ClassDeclaration:
+							case ts.SyntaxKind.MappedType:
+								let properties= refType.getProperties();
+								if(!properties.length)
+									throw new Error(`Generic type "${targetRef.getText()}" has no fields! at ${node.getSourceFile().fileName}`);
+								// node
+								currentNode={
+									kind: ModelKind.PLAIN_OBJECT,
+									name: nodeName,
+									jsDoc: undefined,
+									deprecated: undefined,
+									children: [],
+									mapChilds: {},
+									isClass: true
+								};
+								properties.forEach(e=>{
+									if(e.valueDeclaration)
+										refVisitor.push(e.valueDeclaration, currentNode, false, generics);
+								});
+								break;
+							default:
+								throw new Error(`Unsupported kind "${ts.SyntaxKind[s.kind]}" of reference "${nodeName}" at ${fileName}`);
+						}
+						entities.push(mapEntities[nodeName]= currentNode);
 					}
 				} else {
 					refVisitor.push(node, pDesc, isInput, generics);
