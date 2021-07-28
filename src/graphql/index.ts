@@ -55,14 +55,16 @@ export function toGraphql(ast: ModelRoot){
 					for(j=0, jlen= childs.length; j<jlen; ++j){
 						child= childs[j];
 						childName= child.name!;
-						objFields[childName]={
-							type:				_resolveFieldType(child as ObjectField, isInput, entity) as GraphQLInputType,
-							description:		child.jsDoc,
-							defaultValue:		(child as ObjectField).defaultValue,
-							name:				childName,
-							deprecationReason:	child.deprecated,
-							extensions:			undefined
-						};
+						// If has type value (not output only)
+						if((child as ObjectField).children[0])
+							objFields[childName]={
+								type:				_resolveFieldType(child as ObjectField, isInput, entity) as GraphQLInputType,
+								description:		child.jsDoc,
+								defaultValue:		(child as ObjectField).defaultValue,
+								name:				childName,
+								deprecationReason:	child.deprecated,
+								extensions:			undefined
+							};
 					}
 				} else {
 					const objFields: GraphQLFieldConfigMap<any, any>= fields;
@@ -79,18 +81,8 @@ export function toGraphql(ast: ModelRoot){
 					}
 				}
 				break;
-			case ModelKind.ENUM:
-				childs= entity.children;
-				const enumFields: GraphQLEnumValueConfigMap= fields!;
-				for(j=0, jlen= childs.length; j<jlen; ++j){
-					child= childs[j];
-					enumFields[child.name!]={
-						description: child.jsDoc,
-						deprecationReason: child.deprecated,
-						value: (child as EnumMember).value
-					};
-				}
-				break;
+			// case ModelKind.ENUM:
+			// 	break;
 			case ModelKind.UNION:
 				childs= entity.children;
 				const unionItems: GraphQLObjectType[]= fields!;
@@ -99,10 +91,9 @@ export function toGraphql(ast: ModelRoot){
 					unionItems.push(_getNode(child, isInput).node as GraphQLObjectType);
 				}
 				break;
-			case ModelKind.SCALAR:
-			case ModelKind.BASIC_SCALAR:
-				// Nothing to do
-				break;
+			// case ModelKind.SCALAR:
+			// case ModelKind.BASIC_SCALAR:
+			// 	break;
 		}
 	}
 
@@ -136,6 +127,7 @@ export function toGraphql(ast: ModelRoot){
 				throw new Error(`Missing entity: ${entity.name}`);
 			entity= n;
 		}
+		var childs:any, child:any;
 		// var fields: any[]= [];
 		switch(entity.kind){
 			case ModelKind.PLAIN_OBJECT:
@@ -169,13 +161,24 @@ export function toGraphql(ast: ModelRoot){
 				break;
 			case ModelKind.ENUM:
 				if(!(result= mapOutputEntities.get(entity))){
-					fields= {};
+					// Add enum members
+					childs= entity.children;
+					const enumFields: GraphQLEnumValueConfigMap= {};
+					for(j=0, jlen= childs.length; j<jlen; ++j){
+						child= childs[j];
+						enumFields[child.name!]={
+							description: child.jsDoc,
+							deprecationReason: child.deprecated,
+							value: (child as EnumMember).value
+						};
+					}
+					// Create gql entity
 					result={
-						fields,
+						fields: enumFields,
 						node: new GraphQLEnumType({
 							name:	_formatName(entity.name!),
 							description: entity.jsDoc,
-							values: fields
+							values: enumFields
 						})
 					};
 					queue.push({entity, isInput});
@@ -183,6 +186,7 @@ export function toGraphql(ast: ModelRoot){
 				}
 				break;
 			case ModelKind.UNION:
+				if(isInput) throw new Error(`Unions could not be inputs in graphql. Got ${entity.name}`);
 				if(!(result= mapOutputEntities.get(entity))){
 					let parser= entity.parser as UNION<any>;
 					let types: GraphQLObjectType[]= [];
@@ -236,7 +240,11 @@ export function toGraphql(ast: ModelRoot){
 	function _resolveFieldType(field: ObjectField, isInput: boolean, parentNode: ModelObjectNode){
 		var result: GraphQLType;
 		var wrappers= [];
-		var el: ModelNode= field.children[0]??field.resolver?.children[0];
+		var el: ModelNode
+		if(isInput)
+			el= field.children[0];
+		else
+			el= field.resolver?.children[0] ?? field.children[0];
 		if(!el)
 			throw new Error(`Empty field  at ${parentNode.name}.${field.name}`);
 		while(true){
@@ -280,12 +288,13 @@ export function toGraphql(ast: ModelRoot){
 		var childs= node.children, i=0, len= childs.length, child: ObjectField;
 		while(i<len){
 			child= childs[i++] as ObjectField;
-			result[_formatName(child.name!)]= {
-				type:	_resolveFieldType(child, true, node) as GraphQLInputType,
-				deprecationReason:	child.deprecated,
-				defaultValue:		child.defaultValue,
-				description:		child.jsDoc
-			};
+			if(child.children[0]) // If has type: not output only
+				result[_formatName(child.name!)]= {
+					type:	_resolveFieldType(child, true, node) as GraphQLInputType,
+					deprecationReason:	child.deprecated,
+					defaultValue:		child.defaultValue,
+					description:		child.jsDoc
+				};
 		}
 		return result;
 	}

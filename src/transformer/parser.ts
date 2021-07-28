@@ -102,6 +102,8 @@ function _parseNode(
 	var fieldName: string;
 	var ref: ModelRefNode;
 	var pkind: ModelKind;
+	/** Ignore entity if is from reference */
+	const ignoreDuplicateEntity= refVisitor===visitor;
 	// Go though nodes
 	while(true){
 		var item= it.next();
@@ -123,23 +125,26 @@ function _parseNode(
 				// Get entity name
 				nodeName= (node as any).name?.getText();
 				let hasResolvers = false;
+				let pInterfaceNode: ts.InterfaceDeclaration|undefined;
 				if (ts.isClassDeclaration(node) && node.heritageClauses){
 					hasResolvers= node.heritageClauses.some(
 						n=>n.types.some(function(t){
 							var s= typeChecker.getSymbolAtLocation(t.expression);
 							var txt= s?.name;
-							if(txt==='ResolversOf'){
-								isInput= false;
-								nodeName= t.typeArguments![0].getText();
-								return true;
-							} else if(txt=== 'InputResolversOf'){
-								isInput= true;
-								nodeName= t.typeArguments![0].getText();
+							if(txt==='ResolversOf' || txt==='InputResolversOf'){
+								isInput= txt==='InputResolversOf';
+								pInterfaceNode= typeChecker.getAliasedSymbol(typeChecker.getSymbolAtLocation((t.typeArguments![0] as ts.TypeReferenceNode).typeName)!)?.declarations?.[0] as ts.InterfaceDeclaration;
+								if(!pInterfaceNode)
+									throw new Error(`Fail to resolve reference: ${t.typeArguments![0].getText()} at ${fileName} : ${t.getText()}`);
+								nodeName= pInterfaceNode.name.getText();
 								return true;
 							}
 						})
 					);
 				}
+				// break if is from reference
+				if(ignoreDuplicateEntity && mapEntities[nodeName])
+					continue;
 				// if ignore
 				if(meta.ignore || !(hasResolvers || pDesc || meta.tsModel)) continue;
 				// get entity
@@ -166,6 +171,9 @@ function _parseNode(
 					if(valueDeclaration)
 						visitor.push(valueDeclaration, currentNode, isInput, generics);
 				});
+				// Resolve parent interface
+				if(pInterfaceNode)
+					visitor.push(pInterfaceNode, currentNode, false, generics);
 				break;
 			case ts.SyntaxKind.PropertyDeclaration:
 			case ts.SyntaxKind.PropertySignature:
@@ -178,41 +186,46 @@ function _parseNode(
 					throw new Error(`Expected parent as Plain object. Got ${ModelKind[pDesc.kind]} at ${fileName}::${node.getText()}`);
 				// Current node
 				fieldName= (node as ts.PropertySignature).name.getText();
-				if(pDesc.mapChilds[fieldName])
-					throw new Error(`Duplicate field ${fieldName} at ${fileName}::${node.getText()}`);
-				currentNode = {
-					kind:		ModelKind.FIELD,
-					name:		fieldName,
-					jsDoc:		meta.jsDoc,
-					required:	!(node as ts.PropertySignature).questionToken,
-					children:	[],
-					deprecated: meta.deprecated,
-					defaultValue: meta.defaultValue,
-					asserts:	meta.asserts,
-					resolver:	undefined,
-					input:		undefined
-				};
-				// Push to parent
-				pDesc.children.push(pDesc.mapChilds[fieldName]= currentNode);
+				if(currentNode = pDesc.mapChilds[fieldName]){
+					// throw new Error(`Duplicate field ${fieldName} at ${fileName}::${node.getText()}`);
+					currentNode.jsDoc ??= meta.jsDoc;
+					currentNode.deprecated ??= meta.deprecated;
+					currentNode.required ??= !(node as ts.MethodDeclaration).questionToken;
+					currentNode.defaultValue ??= meta.defaultValue;
+					currentNode.asserts ??= meta.asserts;
+				} else{
+					currentNode = {
+						kind:		ModelKind.FIELD,
+						name:		fieldName,
+						jsDoc:		meta.jsDoc,
+						required:	!(node as ts.PropertySignature).questionToken,
+						children:	[],
+						deprecated: meta.deprecated,
+						defaultValue: meta.defaultValue,
+						asserts:	meta.asserts,
+						resolver:	undefined,
+						input:		undefined
+					};
+					// Push to parent
+					pDesc.children.push(pDesc.mapChilds[fieldName]= currentNode);
+				}
 				// Go through childs
 				visitor.push(node.getChildren(), currentNode, isInput, generics);
 				break;
 			case ts.SyntaxKind.MethodDeclaration:
 				//* Method declaration
 				if(!pDesc) continue;
-				meta= _getNodeMetadata(node, typeChecker);
-				if(meta.ignore) continue;
 				if (pDesc.kind !== ModelKind.PLAIN_OBJECT)
 					throw new Error(`Expected parent as Plain object. Got ${ModelKind[pDesc.kind]} at ${fileName}::${node.getText()}`);
+				meta= _getNodeMetadata(node, typeChecker);
+				if(meta.ignore) continue;
 				// Current node
 				fieldName= (node as ts.MethodDeclaration).name.getText();
-				if(pDesc.mapChilds[fieldName])
-					throw new Error(`Duplicate field ${fieldName} at ${fileName}::${node.getText()}`);
 				// resolver
 				let resolverMethod: ObjectField['resolver']= undefined;
 				let inputResolver: ObjectField['input']= undefined;
 				let parentNameNode= (node.parent as ts.ClassDeclaration).name;
-				if(!parentNameNode) throw new Error(`Expected parent Node at ${fileName} ${node.getText()}`);
+				if(!parentNameNode) throw new Error(`Expected parent Node at ${fileName} :: ${node.getText()}`);
 				let parentName= parentNameNode.getText();
 				if(isInput){
 					inputResolver= {
@@ -240,29 +253,44 @@ function _parseNode(
 						children:	[undefined, undefined]
 					};
 				}
-				// Current node
-				currentNode = {
-					kind:		ModelKind.FIELD,
-					name:		fieldName,
-					jsDoc:		meta.jsDoc,
-					deprecated: meta.deprecated,
-					required:	!(node as ts.MethodDeclaration).questionToken,
-					children:	[],
-					defaultValue: meta.defaultValue,
-					asserts:	meta.asserts,
-					resolver:	resolverMethod,
-					input:		inputResolver
-				};
-				// Add to parent
-				pDesc.children.push(pDesc.mapChilds[fieldName!] = currentNode);
-				// Go through arg param
+				// Parent field
+				if(currentNode= pDesc.mapChilds[fieldName]){
+					// throw new Error(`Duplicate field ${fieldName} at ${fileName} :: ${node.getText()}`);
+					currentNode.jsDoc ??= meta.jsDoc;
+					currentNode.deprecated ??= meta.deprecated;
+					currentNode.required ??= !(node as ts.MethodDeclaration).questionToken;
+					currentNode.defaultValue ??= meta.defaultValue;
+					currentNode.asserts ??= meta.asserts;
+					if(resolverMethod) currentNode.resolver= resolverMethod
+					if(inputResolver) currentNode.input= inputResolver
+				} else {
+					// Current node
+					currentNode = {
+						kind:		ModelKind.FIELD,
+						name:		fieldName,
+						jsDoc:		meta.jsDoc,
+						deprecated: meta.deprecated,
+						required:	!(node as ts.MethodDeclaration).questionToken,
+						children:	[],
+						defaultValue: meta.defaultValue,
+						asserts:	meta.asserts,
+						resolver:	resolverMethod,
+						input:		inputResolver
+					};
+					// Add to parent
+					pDesc.children.push(pDesc.mapChilds[fieldName!] = currentNode);
+					// Go through arg param
+				}
 				if(!isInput){
 					let params = (node as ts.MethodDeclaration).parameters;
 					if (params && params[1])
 						visitor.push(params[1], resolverMethod, isInput, generics);
 				}
 				// Go through results
-				visitor.push((node as ts.MethodDeclaration).type , resolverMethod || currentNode, isInput, generics);
+				visitor.push(
+					(node as ts.MethodDeclaration).type
+					?? (typeChecker.getReturnTypeOfSignature(typeChecker.getSignatureFromDeclaration(node as ts.MethodDeclaration)!).symbol.declarations?.[0])
+					, resolverMethod || currentNode, isInput, generics);
 				break;
 			case ts.SyntaxKind.Parameter:
 				// Method parameter
@@ -284,9 +312,12 @@ function _parseNode(
 				//  Skip entities without "Export" keyword
 				if(exportRequired && !((node as ts.EnumDeclaration).modifiers?.some(e=> e.kind=== ts.SyntaxKind.ExportKeyword)))
 					continue;
+				nodeName= (node as ts.EnumDeclaration).name.getText();
+				// break if is from reference
+				if(ignoreDuplicateEntity && mapEntities[nodeName])
+					continue;
 				meta= _getNodeMetadata(node, typeChecker);
 				if(meta.ignore || !(pDesc || meta.tsModel)) continue;
-				nodeName= (node as ts.EnumDeclaration).name.getText();
 				// get entity
 				if(nodeName && (currentNode= mapEntities[nodeName])){
 					if(currentNode.kind!==ModelKind.ENUM)
@@ -382,14 +413,31 @@ function _parseNode(
 											name:		undefined
 										}
 									};
+									let unionChilds= currentNode.children;
 									entities.push(mapEntities[fieldName]= currentNode);
 									// Parse members
-									const ss= typeChecker.getSymbolAtLocation(typeArg.typeName);
-									console.log('---*-', ts.SyntaxKind[ss?.valueDeclaration?.kind!])
-									//-------------------------------------------------------------------------- here 
-									// typeTypeArg.getBaseTypes()?.forEach(t=>{
-									// 	console.log('UNION: ', t.symbol.name);
-									// });
+									const union= typeChecker.getAliasedSymbol(
+										typeChecker.getSymbolAtLocation(typeArg.typeName)!
+									)?.declarations?.[0]
+									?.getChildren().find(e=> e.kind===ts.SyntaxKind.UnionType);
+									if(union && ts.isUnionTypeNode(union)){
+										union.types.forEach(e=>{
+											let dec= typeChecker.getTypeAtLocation(e).symbol?.declarations?.[0];
+											if(dec && (ts.isInterfaceDeclaration(dec) || ts.isClassDeclaration(dec))){
+												unionChilds.push({
+													kind: ModelKind.REF,
+													name:	dec.name?.getText(),
+													jsDoc: undefined,
+													deprecated: undefined,
+												});
+												refVisitor.push( dec, undefined, isInput, generics);
+											} else {
+												throw new Error(`Illegal union type: ${dec?.getText()??typeArg.getText()} at ${typeArg.getSourceFile().fileName}`)
+											}
+										});
+									} else {
+										throw new Error(`Missing union types for: "${typeArg.getText()}" at ${typeArg.getSourceFile().fileName}`);
+									}
 									break;
 							}
 						}
@@ -541,9 +589,10 @@ function _parseNode(
 									mapChilds: {},
 									isClass: true
 								};
-								properties.forEach(e=>{
-									if(e.valueDeclaration)
-										refVisitor.push(e.valueDeclaration, currentNode, false, generics);
+								properties.forEach(function(e){
+									var n= e.valueDeclaration ?? e.declarations?.[0];
+									if(n)
+										refVisitor.push(n, currentNode, false, generics);
 								});
 								break;
 							default:
