@@ -240,7 +240,8 @@ export function toGraphql(ast: ModelRoot){
 	function _resolveFieldType(field: ObjectField, isInput: boolean, parentNode: ModelObjectNode){
 		var result: GraphQLType;
 		var wrappers= [];
-		var el: ModelNode
+		var el: ModelNode;
+		if(field.required) wrappers.push(1);
 		if(isInput)
 			el= field.children[0];
 		else

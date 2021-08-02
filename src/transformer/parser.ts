@@ -683,9 +683,10 @@ function _getNodeMetadata(node: ts.Node, typeChecker: ts.TypeChecker){
 		for(i=0, len= jsDocTags.length; i<len; ++i){
 			let tag= jsDocTags[i];
 			let tagName= tag.tagName.getText();
+			let tagText:any;
 			switch(tagName){
 				case 'assert':
-					let tagText= tag.comment;
+					tagText= tag.comment;
 					if(Array.isArray(tagText))
 						tagText= tagText.map((l: ts.JSDocText)=> l.text).join(', ');
 					// FIXME check using multiple lines for jsdoc tag
