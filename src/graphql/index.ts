@@ -42,10 +42,10 @@ export function toGraphql(ast: ModelRoot){
 	if(entity= entitiesMap.Subscription) queue.push({entity, isInput: false});
 	// Loop
 	var i=0;
-	var j:number, jlen: number, childs: ModelNode[], child: ModelNode, childName: string;
 	var fields: any;
 	while(i< queue.length){
-		var {entity, isInput}= queue[i++];
+		let j:number, jlen: number, childs: ModelNode[], child: ModelNode, childName: string;
+		let {entity, isInput}= queue[i++];
 		fields= _getNode(entity, isInput).fields!;
 		switch(entity.kind){
 			case ModelKind.PLAIN_OBJECT:
@@ -164,7 +164,7 @@ export function toGraphql(ast: ModelRoot){
 					// Add enum members
 					childs= entity.children;
 					const enumFields: GraphQLEnumValueConfigMap= {};
-					for(j=0, jlen= childs.length; j<jlen; ++j){
+					for(let j=0, jlen= childs.length; j<jlen; ++j){
 						child= childs[j];
 						enumFields[child.name!]={
 							description: child.jsDoc,
@@ -248,17 +248,22 @@ export function toGraphql(ast: ModelRoot){
 			el= field.resolver?.children[0] ?? field.children[0];
 		if(!el)
 			throw new Error(`Empty field  at ${parentNode.name}.${field.name}`);
-		while(true){
+		loop: while(true){
 			if((el as ObjectField).required) wrappers.push(1);
-			if(el.kind===ModelKind.LIST){
-				wrappers.push(0);
-				el= (el as ModelListNode).children[0];
-				if(!el) throw new Error(`Enexpected empty list! at ${parentNode.name}.${field.name}`);
-			} else if(el.kind===ModelKind.REF || el.kind===ModelKind.SCALAR ||el.kind===ModelKind.UNION){
-				result= _getNode(el, isInput).node;
-				break;
-			} else {
-				throw new Error(`Enexpected kind: ${ModelKind[el.kind]} at ${parentNode.name}.${field.name}`);
+			switch(el.kind){
+				case ModelKind.LIST:
+					wrappers.push(0);
+					el= (el as ModelListNode).children[0];
+					if(!el) throw new Error(`Enexpected empty list! at ${parentNode.name}.${field.name}`);
+					break;
+				case ModelKind.REF:
+				case ModelKind.SCALAR:
+				case ModelKind.BASIC_SCALAR:
+				case ModelKind.UNION:
+					result= _getNode(el, isInput).node;
+					break loop;
+				default:
+					throw new Error(`Enexpected kind: ${ModelKind[el.kind]} at ${parentNode.name}.${field.name}`);
 			}
 		}
 		var i=0, len= wrappers.length;

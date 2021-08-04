@@ -541,7 +541,7 @@ function _parseNode(
 					if(mapEntities[nodeName]==null){
 						// TODO add jsDoc resolver
 						let refType= typeChecker.getTypeAtLocation(targetRef);
-						let s= refType.symbol.declarations?.[0]
+						let s= refType.symbol?.declarations?.[0]
 						if(!s)
 							throw new Error(`Fail to find declaration for ${targetRef.getText()} at ${node.getSourceFile().fileName}`);
 						// console.log('---- reference: ', nodeName, ts.SyntaxKind[node.kind]);
