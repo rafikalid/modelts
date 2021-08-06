@@ -1,4 +1,4 @@
-import { ModelKind, ModelNode, ModelRoot, ObjectField, ModelObjectNode, ModelRefNode, ModelNodeWithChilds, ModelUnionNode } from "@src/schema/model";
+import { ModelKind, ModelNode, ModelRoot, ObjectField, ModelObjectNode, ModelRefNode, ModelNodeWithChilds, ModelUnionNode, MethodDescriptorI, ModelMethod } from "@src/schema/model";
 import ts from "typescript";
 import Glob from 'glob';
 import { Visitor } from "@src/utils/utils";
@@ -44,8 +44,8 @@ export function ParseModelFrom(pathPattern:string, compilerOptions: ts.CompilerO
 		let srcFile= srcFiles[i];
 		if(srcFile.isDeclarationFile) continue;
 		// Push to iterator
-		visitor0.push(srcFile.getChildren(), undefined, false, undefined);
-		visitor.push(srcFile.getChildren(), undefined, false, undefined);
+		visitor0.push(srcFile.getChildren(), undefined, false, undefined, undefined);
+		visitor.push(srcFile.getChildren(), undefined, false, undefined, undefined);
 	}
 	var it= visitor0.it();
 	while(true){
@@ -85,15 +85,51 @@ export function ParseModelFrom(pathPattern:string, compilerOptions: ts.CompilerO
 				fieldsMap= new Map();
 				resolversMapping.set(targetInterface, fieldsMap);
 			}
-			let childs= node.getChildren();
+			let childs= typeChecker.getTypeAtLocation(node).getProperties();
+			// let childs= node.getChildren();
 			for(let j=0, jlen= childs.length; j<jlen; j++){
-				let child= childs[j];
+				let child= childs[j].valueDeclaration;
+				if(child==null) continue;
 				if(ts.isMethodDeclaration(child)){
 					let methodName= child.name.getText();
-					fieldsMap.set(methodName, {
+					let d= fieldsMap.get(methodName);
+					if(d==null){
+						d= {};
+						fieldsMap.set(methodName, d);
+					}
+					let di: MethodDescriptorI= {
 						fileName,
-						method: `${className}.prototype.${methodName}`
-					});
+						className,
+						name: methodName,
+						isStatic: child.modifiers?.some(n=> n.kind===ts.SyntaxKind.StaticKeyword) ?? false,
+					};
+					if(isInput){
+						if(d.input==null) d.input= di;
+						else throw new Error(`Input resolver already defined to "${className}.${methodName}" at: ${fileName}`);
+					} else {
+						if(d.output==null){
+							d.output= {
+								kind:		ModelKind.METHOD,
+								name:		methodName,
+								jsDoc:		undefined,
+								deprecated: undefined,
+								// method:		node as ts.MethodDeclaration,
+								method:		di,
+								// method: `${parentDescriptor.oName??parentDescriptor.name}.prototype.${methodName}`,
+								/** [ResultType, ParamType] */
+								children:	[undefined, undefined]
+							};
+							// Resolve Param type
+							let params = child.parameters;
+							if (params && params[1])
+								visitor.push(params[1], d.output, isInput, generics, undefined);
+							// Resolve return value
+							visitor.push(
+								child.type
+								?? (typeChecker.getReturnTypeOfSignature(typeChecker.getSignatureFromDeclaration(child)!).symbol?.declarations?.[0])
+								, d.output, isInput, generics, undefined);
+						} else throw new Error(`Resolver already defined to "${className}.${methodName}" at: ${fileName}`);
+					}
 				}
 			}
 		} else if(ts.isVariableStatement(node)){
@@ -176,7 +212,7 @@ export function ParseModelFrom(pathPattern:string, compilerOptions: ts.CompilerO
 											jsDoc: undefined,
 											deprecated: undefined,
 										});
-										visitor.push( dec, undefined, isInput, generics);
+										visitor.push( dec, undefined, isInput, generics, undefined);
 									}
 								}
 							}
@@ -185,7 +221,7 @@ export function ParseModelFrom(pathPattern:string, compilerOptions: ts.CompilerO
 				}
 			}
 		} else if(node.kind === ts.SyntaxKind.SyntaxList){
-			visitor0.push(node.getChildren(), pDesc, isInput, generics);
+			visitor0.push(node.getChildren(), pDesc, isInput, generics, undefined);
 		}
 	}
 	
@@ -210,9 +246,9 @@ export function ParseModelFrom(pathPattern:string, compilerOptions: ts.CompilerO
 		let item= it.next();
 		if(item.done) break;
 		// ndoe
-		let {node, parentDescriptor: pDesc, isInput, generics}= item.value;
+		let {node, parentDescriptor: pDesc, isInput, generics, flags: nodeFlags}= item.value;
 		let fileName= node.getSourceFile().fileName;
-		let meta: GetNodeMatadataReturn;
+		let meta: GetNodeMetadataReturn;
 		let currentNode: ModelNode;
 		let nodeType = typeChecker.getTypeAtLocation(node);
 		let pkind: ModelKind;
@@ -249,9 +285,9 @@ export function ParseModelFrom(pathPattern:string, compilerOptions: ts.CompilerO
 					entities.push(currentNode);
 				}
 				// Go through fields
-				nodeType.getProperties().forEach(function({valueDeclaration}){
+				nodeType.getProperties().forEach(function({valueDeclaration, flags}){
 					if(valueDeclaration)
-						visitor.push(valueDeclaration, currentNode, isInput, generics);
+						visitor.push(valueDeclaration, currentNode, isInput, generics, flags);
 				});
 				break;
 			case ts.SyntaxKind.PropertyDeclaration:
@@ -264,11 +300,13 @@ export function ParseModelFrom(pathPattern:string, compilerOptions: ts.CompilerO
 					throw new Error(`Expected parent as Plain object. Got ${ModelKind[pDesc.kind]} at ${fileName}::${node.getText()}`);
 				// Current node
 				let propertyName= (node as ts.PropertySignature).name.getText();
+				let isRequiredField= !(nodeFlags==null? (node as ts.PropertyDeclaration).questionToken : nodeFlags & ts.SymbolFlags.Optional);
 				if(currentNode = pDesc.mapChilds[propertyName]){
 					// throw new Error(`Duplicate field ${propertyName} at ${fileName}::${node.getText()}`);
 					currentNode.jsDoc ??= meta.jsDoc;
 					currentNode.deprecated ??= meta.deprecated;
-					currentNode.required ??= !(node as ts.MethodDeclaration).questionToken;
+					// currentNode.required ??= !(node as ts.MethodDeclaration).questionToken;
+					currentNode.required ??= isRequiredField;
 					currentNode.defaultValue ??= meta.defaultValue;
 					currentNode.asserts ??= meta.asserts;
 				} else{
@@ -277,7 +315,7 @@ export function ParseModelFrom(pathPattern:string, compilerOptions: ts.CompilerO
 						name:		propertyName,
 						jsDoc:		meta.jsDoc,
 						//TODO check to resolve this when "Partial" is used!
-						required:	!(node as ts.PropertySignature).questionToken,
+						required:	isRequiredField,
 						children:	[],
 						deprecated: meta.deprecated,
 						defaultValue: meta.defaultValue,
@@ -287,9 +325,11 @@ export function ParseModelFrom(pathPattern:string, compilerOptions: ts.CompilerO
 					};
 					// Push to parent
 					pDesc.children.push(pDesc.mapChilds[propertyName]= currentNode);
+					// get input/output resolvers
+					_getResolvers(propertyName, node as ts.PropertyDeclaration, currentNode);
 				}
 				// Go through childs
-				visitor.push(node.getChildren(), currentNode, isInput, generics);
+				visitor.push(node.getChildren(), currentNode, isInput, generics, undefined);
 				break;
 			case ts.SyntaxKind.MethodDeclaration:
 				//* Method declaration
@@ -333,11 +373,12 @@ export function ParseModelFrom(pathPattern:string, compilerOptions: ts.CompilerO
 					};
 				}
 				// Parent field
+				let isRequiredMethod= !(nodeFlags==null? (node as ts.MethodDeclaration).questionToken : nodeFlags & ts.SymbolFlags.Optional);
 				if(currentNode= pDesc.mapChilds[methodName]){
 					// throw new Error(`Duplicate field ${methodName} at ${fileName} :: ${node.getText()}`);
 					currentNode.jsDoc ??= meta.jsDoc;
 					currentNode.deprecated ??= meta.deprecated;
-					currentNode.required ??= !(node as ts.MethodDeclaration).questionToken;
+					currentNode.required ??= isRequiredMethod;
 					currentNode.defaultValue ??= meta.defaultValue;
 					currentNode.asserts ??= meta.asserts;
 					if(resolverMethod) currentNode.resolver= resolverMethod
@@ -349,7 +390,7 @@ export function ParseModelFrom(pathPattern:string, compilerOptions: ts.CompilerO
 						name:		methodName,
 						jsDoc:		meta.jsDoc,
 						deprecated: meta.deprecated,
-						required:	!(node as ts.MethodDeclaration).questionToken,
+						required:	isRequiredMethod,
 						children:	[],
 						defaultValue: meta.defaultValue,
 						asserts:	meta.asserts,
@@ -359,17 +400,19 @@ export function ParseModelFrom(pathPattern:string, compilerOptions: ts.CompilerO
 					// Add to parent
 					pDesc.children.push(pDesc.mapChilds[methodName] = currentNode);
 					// Go through arg param
+					// get input/output resolvers
+					_getResolvers(methodName, node as ts.MethodDeclaration, currentNode);
 				}
 				if(!isInput){
 					let params = (node as ts.MethodDeclaration).parameters;
 					if (params && params[1])
-						visitor.push(params[1], resolverMethod, isInput, generics);
+						visitor.push(params[1], resolverMethod, isInput, generics, undefined);
 				}
 				// Go through results
 				visitor.push(
 					(node as ts.MethodDeclaration).type
-					?? (typeChecker.getReturnTypeOfSignature(typeChecker.getSignatureFromDeclaration(node as ts.MethodDeclaration)!).symbol.declarations?.[0])
-					, resolverMethod || currentNode, isInput, generics);
+					?? (typeChecker.getReturnTypeOfSignature(typeChecker.getSignatureFromDeclaration(node as ts.MethodDeclaration)!).symbol?.declarations?.[0])
+					, resolverMethod || currentNode, isInput, generics, undefined);
 				break;
 			case ts.SyntaxKind.Parameter:
 				// Method parameter
@@ -384,7 +427,7 @@ export function ParseModelFrom(pathPattern:string, compilerOptions: ts.CompilerO
 				};
 				pDesc.children[1] = currentNode;
 				// Parse param type
-				visitor.push((node as ts.ParameterDeclaration).type, currentNode, isInput, generics);
+				visitor.push((node as ts.ParameterDeclaration).type, currentNode, isInput, generics, undefined);
 				break;
 			case ts.SyntaxKind.EnumDeclaration:
 				//* Enumeration
@@ -419,7 +462,7 @@ export function ParseModelFrom(pathPattern:string, compilerOptions: ts.CompilerO
 					}
 				}
 				// Go through fields
-				visitor.push(node.getChildren(), currentNode, isInput, generics);
+				visitor.push(node.getChildren(), currentNode, isInput, generics, undefined);
 				break;
 			case ts.SyntaxKind.EnumMember:
 				//* Enum member
@@ -463,9 +506,9 @@ export function ParseModelFrom(pathPattern:string, compilerOptions: ts.CompilerO
 				});
 				pDesc.children.push(ref);
 				// Go through fields
-				nodeType.getProperties().forEach(function({valueDeclaration}){
+				nodeType.getProperties().forEach(function({valueDeclaration, flags}){
 					if(valueDeclaration)
-						visitor.push(valueDeclaration, currentNode, isInput, generics);
+						visitor.push(valueDeclaration, currentNode, isInput, generics, flags);
 				});
 				break;
 			case ts.SyntaxKind.UnionType:
@@ -478,10 +521,10 @@ export function ParseModelFrom(pathPattern:string, compilerOptions: ts.CompilerO
 					else
 						throw new Error(`Please give a name to the union "${node.getText()}".`);
 				});
-				if(unionType) visitor.push(unionType, pDesc, isInput, generics);
+				if(unionType) visitor.push(unionType, pDesc, isInput, generics, undefined);
 				break;
 			case ts.SyntaxKind.TypeOperator:
-				visitor.push((node as ts.TypeOperatorNode).type, pDesc, isInput, generics);
+				visitor.push((node as ts.TypeOperatorNode).type, pDesc, isInput, generics, undefined);
 				break;
 			case ts.SyntaxKind.TypeReference:
 				//* Type reference
@@ -504,7 +547,7 @@ export function ParseModelFrom(pathPattern:string, compilerOptions: ts.CompilerO
 					// 	children: []
 					// };
 					// (pDesc as ObjectField).children.push(currentNode);
-					visitor.push((node as ts.TypeReferenceNode).typeArguments!, pDesc, isInput, generics);
+					visitor.push((node as ts.TypeReferenceNode).typeArguments!, pDesc, isInput, generics, undefined);
 				} else {
 					// Add reference
 					let targetRef= (node as ts.TypeReferenceNode);
@@ -563,7 +606,7 @@ export function ParseModelFrom(pathPattern:string, compilerOptions: ts.CompilerO
 									children: [],
 									mapChilds: {}
 								};
-								visitor.push(s.getChildren(), currentNode, isInput, generics);
+								visitor.push(s.getChildren(), currentNode, isInput, generics, undefined);
 								break;
 							case ts.SyntaxKind.InterfaceDeclaration:
 							case ts.SyntaxKind.ClassDeclaration:
@@ -584,7 +627,7 @@ export function ParseModelFrom(pathPattern:string, compilerOptions: ts.CompilerO
 								properties.forEach(function(e){
 									var n= e.valueDeclaration ?? e.declarations?.[0];
 									if(n)
-										visitor.push(n, currentNode, false, generics);
+										visitor.push(n, currentNode, false, generics, e.flags);
 								});
 								break;
 							default:
@@ -630,11 +673,11 @@ export function ParseModelFrom(pathPattern:string, compilerOptions: ts.CompilerO
 				};
 				(pDesc as ModelNodeWithChilds).children[0] = currentNode;
 				// Go through childs
-				visitor.push((node as ts.ArrayTypeNode).elementType, currentNode, isInput, generics);
+				visitor.push((node as ts.ArrayTypeNode).elementType, currentNode, isInput, generics, undefined);
 				break;
 			case ts.SyntaxKind.SyntaxList:
 				//* Syntax list
-				visitor.push(node.getChildren(), pDesc, isInput, generics);
+				visitor.push(node.getChildren(), pDesc, isInput, generics, undefined);
 				break;
 			// case ts.SyntaxKind.TypeAliasDeclaration:
 			// 	console.log('----------------------------------------->> TYPE: ', node.getText());
@@ -666,12 +709,21 @@ export function ParseModelFrom(pathPattern:string, compilerOptions: ts.CompilerO
 		item.ref.name= itemName; 
 	}
 	return result;
+	// get input/output resolvers
+	function _getResolvers(propertyName: string, node: ts.PropertyDeclaration| ts.PropertySignature|ts.MethodDeclaration, currentNode: ObjectField){
+		var parentNode= node.parent as ts.ClassDeclaration;
+		var c= resolversMapping.get(parentNode)?.get(propertyName)
+		if(c!=null){
+			currentNode.input??= c.input;
+			currentNode.resolver??= c.output;
+		}
+	}
 }
 
 
 /** Get field or entity informations */
 function _getNodeMetadata(node: ts.Node, typeChecker: ts.TypeChecker){
-	const result: GetNodeMatadataReturn= {
+	const result: GetNodeMetadataReturn= {
 		ignore:		false,
 		tsModel:	false,
 		jsDoc:		undefined,
@@ -768,7 +820,7 @@ function _getNodeMetadata(node: ts.Node, typeChecker: ts.TypeChecker){
 	// Return
 	return result;
 }
-interface GetNodeMatadataReturn{
+interface GetNodeMetadataReturn{
 	ignore: boolean
 	tsModel: boolean
 	jsDoc:	string|undefined
@@ -786,8 +838,8 @@ interface NamelessEntity{
 
 /**  */
 interface ResolverItem{
-	fileName: string,
-	method: string
+	input?: MethodDescriptorI,
+	output?: ModelMethod
 }
 /** */
 type ResolverFields= Map<string, ResolverItem>

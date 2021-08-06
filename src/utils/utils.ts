@@ -12,6 +12,8 @@ export interface VisitorEntities<T>{
 	isInput: boolean
 	/** generic refrences */
 	generics: GenericsMap| undefined
+	/** Symbol flags, used to override field flags */
+	flags: ts.SymbolFlags|undefined
 }
 
 /** Visitor pattern using generators */
@@ -27,7 +29,7 @@ export class Visitor<T>{
 		}
 	}
 	/** Push items */
-	push(nodes: T | readonly T[]|undefined, parentDescriptor: ModelNode|undefined, isInput: boolean, generics: GenericsMap| undefined) {
+	push(nodes: T | readonly T[]|undefined, parentDescriptor: ModelNode|undefined, isInput: boolean, generics: GenericsMap| undefined, flags: ts.SymbolFlags|undefined) {
 		var queue= this._queue;
 		if(Array.isArray(nodes)){
 			var i, len;
@@ -36,16 +38,17 @@ export class Visitor<T>{
 					node: nodes[i],
 					parentDescriptor,
 					isInput,
-					generics
+					generics,
+					flags
 				});
 			}
 		} else if(nodes!= null) {
 			queue.push({
-				//@ts-ignore
-				node: nodes,
+				node: nodes as T,
 				parentDescriptor,
 				isInput,
-				generics
+				generics,
+				flags
 			});
 		}
 		return this;
