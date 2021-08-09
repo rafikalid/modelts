@@ -4,6 +4,8 @@ import {join, dirname, relative} from "path";
 import { ParseModelFrom } from "./parser";
 import { serializeAST } from "./serialize-ast";
 import { PACKAGE_NAME } from "@src/config";
+import { ModelRoot } from "@src/schema/model";
+import { compileGraphQL } from "@src/graphql/compiler";
 
 /** Load files and generate Model */
 export function generateModel(filePath: string, fileContent: string, compilerOptions: ts.CompilerOptions, pretty:boolean):string|undefined{
@@ -18,11 +20,13 @@ export function generateModel(filePath: string, fileContent: string, compilerOpt
 	
 	//* Resolve Model for each pattern
 	const ModelMap: Map<string, ts.ObjectLiteralExpression>= new Map();
+	const ModelRoots: Map<string, ModelRoot>= new Map();
 	const importsMapper: Map<string, Map<string, ts.Identifier>>= new Map();
 	mappedFiles.patterns.forEach(function(p){
 		var root= ParseModelFrom(join(relative(process.cwd(), dirname(filePath)), p.slice(1, p.length-1)), compilerOptions);
 		// Serialize AST
 		ModelMap.set(p, serializeAST(root, ts.factory, importsMapper, pretty));
+		ModelRoots.set(p, root);
 	});
 
 	//* Insert in target file
@@ -72,14 +76,25 @@ export function generateModel(filePath: string, fileContent: string, compilerOpt
 	function _createModelInjectTransformer(ctx:ts.TransformationContext, sf: ts.SourceFile, ModelVarName: Set<string>): ts.Transformer<ts.Node>{
 		const factory= ctx.factory;
 		function _visitor(node:ts.Node):ts.Node{
-			if(ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && ModelVarName.has(node.expression.getFirstToken()!.getText())){
-				if(node.expression.name.getText() === 'from'){
-					let arg= node.arguments[0].getText();
-					node= factory.createNewExpression(
-						factory.createIdentifier(node.expression.getFirstToken()!.getText()),
-						undefined,
-						[ModelMap.get(arg)!]
-					);
+			if(
+				ts.isCallExpression(node)
+				&& ts.isPropertyAccessExpression(node.expression)
+				&& ModelVarName.has(node.expression.getFirstToken()!.getText())
+				&& node.arguments.length === 1
+			){
+				let arg= node.arguments[0].getText();
+				switch(node.expression.name.getText()){
+					case 'from':
+						node= factory.createNewExpression(
+							factory.createIdentifier(node.expression.getFirstToken()!.getText()),
+							undefined,
+							[ModelMap.get(arg)!]
+						);
+						break;
+					case 'toGraphQL':
+						//ModelRoots
+						node= compileGraphQL(factory, ModelRoots.get(arg)!, pretty);
+						break;
 				}
 			} else {
 				node= ts.visitEachChild(node, _visitor, ctx);
@@ -117,7 +132,8 @@ function mapFilesWithModel(srcFile: ts.SourceFile): FilterFilesWithModelResp{
 			});
 		} else if(ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && ModelVarName.has(node.expression.getFirstToken()!.getText())){
 			let arg;
-			if(node.expression.name.getText()==='from'){
+			let methodName= node.expression.name.getText();
+			if(methodName==='from' || methodName==='toGraphQL'){
 				if(node.arguments.length===1 && (arg= node.arguments[0]) && ts.isStringLiteral(arg)){
 					foundGlobPatterns.add(arg.getText());
 				} else {

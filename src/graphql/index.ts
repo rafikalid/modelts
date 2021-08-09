@@ -22,6 +22,7 @@ const GraphqlBasicScalars: {[p in typeof DEFAULT_SCALARS[number]]: GraphQLScalar
 };
 
 
+
 /**
  * Convert into graphql
  */

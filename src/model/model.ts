@@ -1,5 +1,6 @@
 import { toGraphql } from "@src/graphql";
 import { ModelNode, ModelRoot } from "@src/schema/model";
+import { GraphQLSchema } from "graphql";
 
 // const DEFINE_SCALAR_NAME_REGEX= /^\w{,50}$/;
 
@@ -22,6 +23,18 @@ export class Model{
 			mapChilds[child.name!]= child;
 		}
 	}
+	/** Compile files into Model */
+	static from(globFilesPath: string): Model{
+		throw new Error('Enexpected call. You forgot to run the compiler!');
+	}
+
+	/**
+	 * Convert Model into graphql
+	 */
+	static toGraphQL(globFilesPath: string): GraphQLSchema{
+		throw new Error('Enexpected call. You forgot to run the compiler!');
+		// return toGraphql(this.AST);
+	}
 
 	// /** Define new scalar */
 	// defineScalar<T>(name: string, options: ScalarDefineOptions<T>){
@@ -41,10 +54,6 @@ export class Model{
 	// 	ast.children.push(ast.mapChilds[name]= scalar);
 	// }
 
-	/** Load Model schema from file */
-	static from(globFilesPath: string): Model{
-		throw new Error('This method is used as a placeholder only for the compiler. Did you forget to run the compiler?');
-	}
 
 	// /** Create schema from files @deprecated */
 	// static async loadFromFiles(pathPattern:string){
@@ -71,12 +80,6 @@ export class Model{
 	// 	return new Model(root);
 	// }
 
-	/**
-	 * Convert Model into graphql
-	 */
-	toGraphQL(){
-		return toGraphql(this.AST);
-	}
 }
 
 /** Deep merge */
