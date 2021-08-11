@@ -54,6 +54,12 @@ export function generateModel(filePath: string, fileContent: string, compilerOpt
 			)
 		);
 	});
+	//* Inject
+	file= ts.transform(file, [function(ctx:ts.TransformationContext): ts.Transformer<ts.Node>{
+		return _createModelInjectTransformer(ctx, file, ModelVarName, importDeclarations);
+	}], compilerOptions).transformed[0] as ts.SourceFile;
+	//* Inject imports
+	
 	if(importDeclarations.length){
 		file= factory.updateSourceFile(
 			file,
@@ -65,15 +71,11 @@ export function generateModel(filePath: string, fileContent: string, compilerOpt
 			file.libReferenceDirectives
 		);
 	}
-	//* Inject
-	file= ts.transform(file, [function(ctx:ts.TransformationContext): ts.Transformer<ts.Node>{
-		return _createModelInjectTransformer(ctx, file, ModelVarName);
-	}], compilerOptions).transformed[0] as ts.SourceFile;
 	//* return content
 	return ts.createPrinter().printFile(file);
 
 	/** Inject model */
-	function _createModelInjectTransformer(ctx:ts.TransformationContext, sf: ts.SourceFile, ModelVarName: Set<string>): ts.Transformer<ts.Node>{
+	function _createModelInjectTransformer(ctx:ts.TransformationContext, sf: ts.SourceFile, ModelVarName: Set<string>, importDeclarations: ts.Statement[]): ts.Transformer<ts.Node>{
 		const factory= ctx.factory;
 		function _visitor(node:ts.Node):ts.Node{
 			if(
@@ -93,7 +95,9 @@ export function generateModel(filePath: string, fileContent: string, compilerOpt
 						break;
 					case 'toGraphQL':
 						//ModelRoots
-						node= compileGraphQL(factory, ModelRoots.get(arg)!, pretty);
+						let re= compileGraphQL(factory, ModelRoots.get(arg)!, pretty);
+						node= re.node;
+						importDeclarations.push(...re.imports);
 						break;
 				}
 			} else {
