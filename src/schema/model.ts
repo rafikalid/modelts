@@ -143,8 +143,8 @@ export interface ModelMethod extends ModelBaseNode{
 	children:	[ModelNode|undefined, ModelNode|undefined]
 }
 
-export type MethodDescriptor= MethodDescriptorI | string
-export interface MethodDescriptorI{
+// export type MethodDescriptor= MethodDescriptorI | string
+export interface MethodDescriptor{
 	/** File name */
 	fileName:	string
 	/** class name */

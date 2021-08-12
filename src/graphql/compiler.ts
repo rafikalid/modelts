@@ -1,6 +1,6 @@
-import { EnumMember, ModelBasicScalar, ModelKind, ModelNode, ModelObjectNode, ModelRoot, ModelScalarNode, ObjectField } from "@src/schema/model";
-import { GraphQLFieldConfigMap } from "graphql";
-import ts from 'typescript';
+import { EnumMember, MethodDescriptor, ModelBasicScalar, ModelKind, ModelNode, ModelObjectNode, ModelParam, ModelRefNode, ModelRoot, ModelScalarNode, ModelUnionNode, ObjectField } from "@src/schema/model";
+import { GraphQLArgumentConfig, GraphQLEnumTypeConfig, GraphQLFieldConfig, GraphQLInputField, GraphQLInputFieldConfig, GraphQLScalarTypeConfig } from "graphql";
+import ts, { isJSDoc } from 'typescript';
 
 /** Compiler response */
 export interface GqlCompilerResp{
@@ -16,12 +16,14 @@ interface MapRef{
 interface CircleEntities{
 	entity: ModelObjectNode,
 	isInput: boolean,
-	fieldsVar: ts.Expression
+	fieldsVar: ts.Expression,
+	/** Fields with circles */
+	fields: ObjectField[]
 }
 /**
  * Compile Model to Graphql
  */
-export function compileGraphQL(factory: ts.NodeFactory, ast: ModelRoot, pretty: boolean):GqlCompilerResp{
+export function compileGraphQL(factory: ts.NodeFactory, pretty: boolean, importsMapper: Map<string, Map<string, ts.Identifier>>, ast: ModelRoot):GqlCompilerResp{
 	/** Map entity to TYPSCRIPT var */
 	const mapNodeVar: Map<ModelNode, MapRef>= new Map();
 	/** Circle fields */
@@ -39,7 +41,8 @@ export function compileGraphQL(factory: ts.NodeFactory, ast: ModelRoot, pretty: 
 	const GraphQLObjectTypeVar = factory.createUniqueName('GraphQLObjectType');
 	const GraphQLInputObjectTypeVar = factory.createUniqueName('GraphQLInputObjectType');
 	const GraphQLListVar= factory.createUniqueName('GraphQLList');
-	const GraphQLNonNullVar= factory.createUniqueName('GraphQLNonNull')
+	const GraphQLNonNullVar= factory.createUniqueName('GraphQLNonNull');
+	const GraphQLUnionTypeVar= factory.createUniqueName('GraphQLUnionType');
 	importGqlVars
 		.set('GraphQLScalarType', GraphQLScalarTypeVar)
 		.set('GraphQLSchema', GraphQLSchemaVar)
@@ -47,7 +50,8 @@ export function compileGraphQL(factory: ts.NodeFactory, ast: ModelRoot, pretty: 
 		.set('GraphQLObjectType', GraphQLObjectTypeVar)
 		.set('GraphQLInputObjectType', GraphQLInputObjectTypeVar)
 		.set('GraphQLList', GraphQLListVar)
-		.set('GraphQLNonNull', GraphQLNonNullVar);
+		.set('GraphQLNonNull', GraphQLNonNullVar)
+		.set('GraphQLUnionType', GraphQLUnionTypeVar);
 	//* Model imports
 	const uIntScalarVar= factory.createUniqueName('uIntScalar');
 	const uFloatScalar= factory.createUniqueName('uFloatScalar');
@@ -59,21 +63,28 @@ export function compileGraphQL(factory: ts.NodeFactory, ast: ModelRoot, pretty: 
 		index:		number
 		/** Entity name */
 		entityName: string|undefined,
-		/** Has circles */
-		hasCircles:	boolean
+		/** Fields with cicles */
+		circles:	ObjectField[]
+		/** Parent node in case of Plain_object */
+		parent?:		QueueInterface
 	}
 	//* Go through Model
 	const queue: QueueInterface[]= [];
 	// Add interface nodes
-	if(entity= entitiesMap.Query) queue.push({entity, isInput: false, index: 0, entityName: 'Query', hasCircles: false});
-	if(entity= entitiesMap.Mutation) queue.push({entity, isInput: false, index: 0, entityName: 'Mutation', hasCircles: false});
-	if(entity= entitiesMap.Subscription) queue.push({entity, isInput: false, index: 0, entityName: 'Subscription', hasCircles: false});
+	if(entity= entitiesMap.Query) queue.push({entity, isInput: false, index: 0, entityName: 'Query', circles: []});
+	if(entity= entitiesMap.Mutation) queue.push({entity, isInput: false, index: 0, entityName: 'Mutation', circles: []});
+	if(entity= entitiesMap.Subscription) queue.push({entity, isInput: false, index: 0, entityName: 'Subscription', circles: []});
 	var entityVar: ts.Identifier;
 	var childs: ModelNode[];
 	var mx= 0;
-	const path: Set<ModelNode>= new Set();
+	/** Union types */
+	const unionTypes: {entity: ModelUnionNode, var: ts.Identifier}[]= [];
+	/** Path for output */
+	const outputPath: Set<ModelNode>= new Set();
+	/** Path for input */
+	const inputPath: Set<ModelNode>= new Set();
 	while(true){
-		if(mx++>100000){
+		if(mx++>10000){
 			console.log('----- <STOP> -----');
 			break;
 		}
@@ -81,6 +92,7 @@ export function compileGraphQL(factory: ts.NodeFactory, ast: ModelRoot, pretty: 
 		if(queueLen===0) break;
 		let currentNode= queue[queueLen-1];
 		let {entity, isInput, index, entityName}= currentNode;
+		let path= isInput ? inputPath : outputPath;
 		//* Entity name
 		if(entityName== null){
 			entityName= (entity as ModelObjectNode).name!;
@@ -103,50 +115,103 @@ export function compileGraphQL(factory: ts.NodeFactory, ast: ModelRoot, pretty: 
 		let isResolved= true;
 		// Switch Node type:
 		switch(entity.kind){
-			case ModelKind.PLAIN_OBJECT:
-				//* Plain object: Check if all fields are resolved
-				childs= entity.children;
-				let len= childs.length;
-				while(index<len){
-					let field= childs[index++] as ObjectField;
-					let child= isInput ? field.children[0] : (field.resolver?.children[0] ?? field.children[0]);
-					//TODO resolve param
+			/** Plain Object field */
+			case ModelKind.FIELD:
+				let field= entity as ObjectField;
+				let flen= isInput? 1: 2;
+				fieldw: while(index<flen){
+					let child: ModelNode;
+					++index;
+					if(index===1)
+						child= isInput ? field.children[0] : (field.resolver?.children[0] ?? field.children[0]);
+					else if(child= field.resolver?.children[1]!){// 2 as input
+						isInput= true;
+					} else break;
+					// Escape wrapping list
 					while(child.kind!== ModelKind.REF){
 						child= (child as ObjectField).children[0];
-						if(child==null)
-							throw new Error(`Enexpected empty child! at ${entity.name}.${field.name}`);
+						if(child==null) break fieldw;
+							//throw new Error(`Enexpected empty child! at ${currentNode.parent!.entity.name}.${field.name}`);
 					}
 					let refNode= entitiesMap[child.name!];
+					if(index===1){
+						//* Type
+						let refNodeEl: ts.Expression|undefined= isInput ? mapNodeVar.get(refNode)?.input : mapNodeVar.get(refNode)?.output;
+						if(refNodeEl==null){
+							isResolved= false;
+							// Check for circles
+							if(path.has(refNode)){
+								currentNode.parent!.circles.push(field);
+							} else {
+								// Go dept
+								path.add(refNode);
+								queue.push({ entity: refNode, isInput, index: 0, entityName: undefined, circles: []});
+							}
+							break;
+						}
+					} else {
+						//* Param
+						queue.push({ entity: refNode, isInput: true, index: 0, entityName: undefined, circles: []});
+					}
 					let refNodeEl: ts.Expression|undefined= isInput ? mapNodeVar.get(refNode)?.input : mapNodeVar.get(refNode)?.output;
 					if(refNodeEl==null){
+						isResolved= false;
 						// Check for circles
-						if(path.has(refNode)){
-							currentNode.hasCircles= true;
+						if(isInput){
+							// Go dept
+							queue.push({ entity: refNode, isInput, index: 0, entityName: undefined, circles: []});
+						} else if(path.has(refNode)) {
+							currentNode.parent!.circles.push(field);
 						} else {
 							// Go dept
-							isResolved= false;
 							path.add(refNode);
-							queue.push({ entity: refNode, isInput, index: 0, entityName: undefined, hasCircles: false});
+							queue.push({ entity: refNode, isInput, index: 0, entityName: undefined, circles: []});
 						}
 						break;
 					}
 				}
+				currentNode.index= index;
+				break;
+			/** Plain Object */
+			case ModelKind.PLAIN_OBJECT:
+				//* Plain object: Check if all fields are resolved
+				childs= entity.children;
+				let len= childs.length;
+				// while(index<len){
+				if(index<len){
+					path.add(entity);
+					queue.push({ entity: childs[index++] as ObjectField, isInput, index: 0, entityName: undefined, circles: [], parent: currentNode});
+					isResolved= false; 
+				}
+				// }
 				if(isResolved){
 					//* All fields resolved
-					if(currentNode.hasCircles){
+					if(currentNode.circles.length){
+						// Create fields with no circles
 						let fieldsVar= factory.createUniqueName(entityName+'_fileds');
-						circleMapFields.push({ entity, isInput, fieldsVar });
+						let fields: Record<string, ts.Expression>= {};
+						let childs= entity.children;
+						let circles= currentNode.circles;
+						for(let i=0, len= childs.length; i<len; ++i){
+							let field= childs[i] as ObjectField;
+							if(circles.indexOf(field)===-1){
+								fields[field.name!]= compileFields(entity, field, isInput);
+							}
+						}
+						circleMapFields.push({ entity, isInput, fieldsVar, fields: circles });
+						// Create Object
+						let obj: Record<string, any>= {
+							name:			entityName,
+							fields:			fieldsVar,
+						};
+						if(entity.jsDoc) obj.description= entity.jsDoc;
 						varDeclarationList.push(
 							// Field var
-							factory.createVariableDeclaration(fieldsVar, undefined, undefined, factory.createObjectLiteralExpression()),
+							factory.createVariableDeclaration(fieldsVar, undefined, undefined, serializeObject(factory, pretty, fields)),
 							// Object
 							createNewVarExpression(pretty, factory, entityVar,
 								isInput ? GraphQLInputObjectTypeVar: GraphQLObjectTypeVar,
-								serializeObject(factory, pretty, {
-									name:			entityName,
-									fields:			fieldsVar,
-									description:	entity.jsDoc
-								})
+								serializeObject(factory, pretty, obj)
 							)
 						);
 					} else {
@@ -164,41 +229,56 @@ export function compileGraphQL(factory: ts.NodeFactory, ast: ModelRoot, pretty: 
 				childs= entity.children;
 				for(let i=0, len= childs.length; i<len; ++i){
 					let child= childs[i];
+					let obj:Record<string, any>= {
+						value: (child as EnumMember).value
+					};
+					if(child.jsDoc) obj.description= child.jsDoc;
+					if(child.deprecated) obj.deprecationReason= child.deprecated;
 					enumValues.push(factory.createPropertyAssignment(
 						factory.createIdentifier(child.name!),
-						serializeObject(factory, pretty, {
-							description: child.jsDoc,
-							deprecationReason: child.deprecated,
-							value: (child as EnumMember).value
-						})
+						serializeObject(factory, pretty, obj)
 					))
 				}
+				let entityDesc: {[k in keyof GraphQLEnumTypeConfig]: any}= {
+					name:	entityName,
+					values: factory.createObjectLiteralExpression(enumValues, pretty)
+				};
+				if(entity.jsDoc) entityDesc.description= entity.jsDoc;
 				varDeclarationList.push(createNewVarExpression(
-					pretty, factory, entityVar, GraphQLEnumTypeVar, serializeObject(factory, pretty, {
-						name:	entityName,
-						values: factory.createObjectLiteralExpression(enumValues, pretty),
-						description: entity.jsDoc 
-					})
+					pretty, factory, entityVar, GraphQLEnumTypeVar, serializeObject(factory, pretty, entityDesc)
 				));
 				mapNodeVar.set(entity, {input: entityVar, output: entityVar});
 				break;
 			case ModelKind.UNION:
 				//* UNION
-				// varDeclarationList.push();
-				//TODO
-				mapNodeVar.set(entity, {input: entityVar, output: entityVar});
+				// let unionTypesVar= factory.createUniqueName(entity.name+'_types');
+				// varDeclarationList.push(createNewVarExpression(pretty, factory, entityVar, GraphQLUnionTypeVar, unionTypesVar));
+				// mapNodeVar.set(entity, {input: entityVar, output: entityVar});
+				// unionTypes.push({entity, var: unionTypesVar});
+				//* Resolve types
+				let uTypes= entity.children;
+				if(index < uTypes.length){
+					let child= uTypes[index];
+					let refNode= entitiesMap[child.name!];
+					if(mapNodeVar.get(refNode)?.output==null){
+						path.add(refNode);
+						queue.push({ entity: refNode, isInput: false, index: 0, entityName: undefined, circles: []});
+						break;
+					}
+					//FIXME Complete working here, resolve all types -------------------------
+				}
 				break;
 			case ModelKind.SCALAR:
 				//* Scalar
+				let scalardesc: {[k in keyof GraphQLScalarTypeConfig<any, any>]: any}= {
+					name:			entityName,
+					parseValue:		genMethodCall(factory, (entity as ModelScalarNode<any>).parser as MethodDescriptor, 'parse'),
+					serialize:		genMethodCall(factory, (entity as ModelScalarNode<any>).parser as MethodDescriptor, 'serialize')
+				};
+				if(entity.jsDoc) scalardesc.description= entity.jsDoc;
 				varDeclarationList.push(
 					createNewVarExpression(
-						pretty, factory, entityVar, GraphQLScalarTypeVar, serializeObject(factory, pretty, {
-							name:			entityName,
-							description:	entity.jsDoc,
-							parser: factory.createPropertyAccessExpression(
-								uIntScalarVar, factory.createIdentifier('parse')
-							)//FIXME
-						})
+						pretty, factory, entityVar, GraphQLScalarTypeVar, serializeObject(factory, pretty, scalardesc)
 					)
 				);
 				mapNodeVar.set(entity, {input: entityVar, output: entityVar});
@@ -271,8 +351,7 @@ export function compileGraphQL(factory: ts.NodeFactory, ast: ModelRoot, pretty: 
 	];
 	// Resolve circles
 	for(let i=0, len= circleMapFields.length; i<len; ++i){
-		let {entity, fieldsVar, isInput}= circleMapFields[i];
-		var fields= entity.children;
+		let {entity, fieldsVar, isInput, fields}= circleMapFields[i];
 		for(let j=0, jlen= fields.length; j<jlen; ++j){
 			let field= fields[j] as ObjectField;
 			statmentsBlock.push(
@@ -313,6 +392,13 @@ export function compileGraphQL(factory: ts.NodeFactory, ast: ModelRoot, pretty: 
 		)
 	];
 
+	// Add return statement
+	statmentsBlock.push(
+		factory.createReturnStatement(createNewExp(factory, GraphQLSchemaVar, serializeObject(factory, pretty, {
+			query:		mapNodeVar.get(entitiesMap.Query)?.output,
+			mutation:	mapNodeVar.get(entitiesMap.Mutation)?.output
+		})))
+	);
 	// return factory
 	return {
 		imports: importDeclarations,
@@ -331,6 +417,7 @@ export function compileGraphQL(factory: ts.NodeFactory, ast: ModelRoot, pretty: 
 	/** Compile plain object */
 	function _compilePlainObject(entity: ModelObjectNode, entityName: string, entityVar: ts.Identifier, isInput: boolean): ts.VariableDeclaration{
 		let fields: Record<string, ts.Expression>= {};
+		let childs= entity.children;
 		for(let i=0, len= childs.length; i<len; ++i){
 			let field= childs[i] as ObjectField;
 			fields[field.name!]= compileFields(entity, field, isInput);
@@ -344,9 +431,8 @@ export function compileGraphQL(factory: ts.NodeFactory, ast: ModelRoot, pretty: 
 			})
 		)
 	}
-	/** Compile object fields */
-	function compileFields(entity: ModelObjectNode, field: ObjectField, isInput: boolean): ts.ObjectLiteralExpression{
-		var child= isInput ? field.children[0] : field.resolver?.children[0] ?? field.children[0];
+	/** Compile each field part */
+	function compileEachFieldPart(entity: ModelObjectNode, field: ObjectField, child: ModelNode, isInput: boolean): ts.Expression{
 		// Wrappers (list, required)
 		let wrappers= field.required ? [1] : [];
 		while(child.kind!== ModelKind.REF){
@@ -362,33 +448,81 @@ export function compileGraphQL(factory: ts.NodeFactory, ast: ModelRoot, pretty: 
 			throw new Error(`Missing entity: ${child.name}. Found at: ${entity.name}.${field.name}`);
 		let refNodeTs: ts.Expression|undefined= isInput ? mapNodeVar.get(refNode)?.input : mapNodeVar.get(refNode)?.output;
 		if(refNodeTs==null){
-			throw new Error(`Enexpected missing entity var: ${refNode.name} at ${entity.name}.${field.name}`)
-			// console.log('Ignore circle>>', refNode.name);
-			// //TODO resolve circles
-			// continue;
+			throw new Error(`Enexpected missing entity var: ${refNode.name} at ${entity.name}.${field.name}`);
 		}
 		// Put wrappers
 		for(let i=0, len= wrappers.length; i<len; ++i){
 			if(wrappers[i]===0) refNodeTs= factory.createNewExpression(GraphQLListVar, undefined, [refNodeTs]);
 			else refNodeTs= factory.createNewExpression(GraphQLNonNullVar, undefined, [refNodeTs]);
 		}
+		return refNodeTs;
+	}
+	/** Compile object fields */
+	function compileFields(entity: ModelObjectNode, field: ObjectField, isInput: boolean): ts.ObjectLiteralExpression{
+		//* Resolve type
+		var child= isInput ? field.children[0] : field.resolver?.children[0] ?? field.children[0];
+		var refNodeTs= compileEachFieldPart(entity, field, child, isInput);
+		//* Result
 		var result: ts.ObjectLiteralExpression;
 		if(isInput){
-			result= serializeObject(factory, pretty, {
-				type:			refNodeTs,
-				// defaultValue:	
-				description:	field.jsDoc
-			});
+			let obj: {[k in keyof GraphQLInputFieldConfig]: any}= {
+				type: refNodeTs,
+				// TODO defaultValue
+			};
+			if(field.jsDoc) obj.description= field.jsDoc;
+			if(field.deprecated) obj.deprecationReason= field.deprecated;
+			result= serializeObject(factory, pretty, obj);
 		} else {
-			result= serializeObject(factory, pretty, {
+			let obj: {[k in keyof GraphQLFieldConfig<any,any>]: any}= {
 				type:				refNodeTs,
 				//TODO args?:		GraphQLFieldConfigArgumentMap;
-				//TODO resolve?:	GraphQLFieldResolveFn;
-				deprecationReason:	field.deprecated,
-				description:		field.jsDoc
-			});
+			};
+			let deprecated= field.resolver?.deprecated ?? field.deprecated;
+			if(deprecated) obj.deprecationReason= deprecated;
+			let comment= field.resolver?.jsDoc ?? field.jsDoc;
+			if(comment) obj.description= comment;
+			// Resolver method
+			if(field.resolver?.method){
+				obj.resolve= genMethodCall(factory, field.resolver.method);
+				// Params
+				let child= field.resolver.children[1] as ModelParam;
+				if(child!=null && child.children.length!==0){
+					let ref= child.children[0] as ModelRefNode;
+					let paramEntity: ModelObjectNode;
+					if(
+						ref.kind !== ModelKind.REF
+						|| !(paramEntity= entitiesMap[ref.name!] as ModelObjectNode)
+						|| paramEntity.kind!== ModelKind.PLAIN_OBJECT
+						) throw new Error(`GraphQl expects a plain object as Param. At: ${entity.name}.${field.name}`);
+					let childs= paramEntity.children;
+					if(childs.length===0) throw new Error(`Empty params detected at: ${entity.name}.${field.name}::${ref.name}`)
+					let param: Record<string, any>= {};
+					for(let i=0, len= childs.length; i<len; ++i){
+						let pField= childs[i] as ObjectField;
+						if(pField.children[0]){
+							let arg: {[k in keyof GraphQLArgumentConfig]: any}= { type: compileEachFieldPart(paramEntity, pField, pField.children[0], true) };
+							if(pField.jsDoc) arg.description= pField.jsDoc;
+							if(pField.defaultValue) arg.defaultValue= pField.defaultValue;
+							if(pField.deprecated) arg.deprecationReason= pField.deprecated;
+							param[pField.name!]= serializeObject(factory, pretty, arg);
+						}
+					}
+					obj.args= serializeObject(factory, pretty, param);
+				}
+			}
+			// Add
+			result= serializeObject(factory, pretty, obj);
 		}
 		return result;
+	}
+	/** Generate methods call */
+	function genMethodCall(factory: ts.NodeFactory, r: MethodDescriptor, methodName?:string){
+		var varId= importsMapper.get(r.fileName)!.get(r.className)!;
+		methodName??= r.name;
+		return factory.createPropertyAccessExpression(
+			varId,
+			factory.createIdentifier(r.isStatic ? methodName! : `prototype.${methodName}`)
+		);
 	}
 }
 
@@ -456,12 +590,12 @@ function serializeObject(
 	return factory.createObjectLiteralExpression(fieldArr, pretty)
 }
 
-/** Create function wrapper */
-function createWrapper(
-	pretty: boolean,
-	factory: ts.NodeFactory,
-	params: readonly ts.ParameterDeclaration[] | undefined,
-	block: readonly ts.Statement[]
-){
-	return factory.createFunctionExpression(undefined, undefined, undefined, undefined, params, undefined, factory.createBlock(block, pretty));
-}
+// /** Create function wrapper */
+// function createWrapper(
+// 	pretty: boolean,
+// 	factory: ts.NodeFactory,
+// 	params: readonly ts.ParameterDeclaration[] | undefined,
+// 	block: readonly ts.Statement[]
+// ){
+// 	return factory.createFunctionExpression(undefined, undefined, undefined, undefined, params, undefined, factory.createBlock(block, pretty));
+// }

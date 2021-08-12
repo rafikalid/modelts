@@ -95,7 +95,7 @@ export function generateModel(filePath: string, fileContent: string, compilerOpt
 						break;
 					case 'toGraphQL':
 						//ModelRoots
-						let re= compileGraphQL(factory, ModelRoots.get(arg)!, pretty);
+						let re= compileGraphQL(factory, pretty, importsMapper, ModelRoots.get(arg)!);
 						node= re.node;
 						importDeclarations.push(...re.imports);
 						break;

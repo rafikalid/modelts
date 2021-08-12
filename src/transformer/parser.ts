@@ -1,4 +1,4 @@
-import { ModelKind, ModelNode, ModelRoot, ObjectField, ModelObjectNode, ModelRefNode, ModelNodeWithChilds, ModelUnionNode, MethodDescriptorI, ModelMethod } from "@src/schema/model";
+import { ModelKind, ModelNode, ModelRoot, ObjectField, ModelObjectNode, ModelRefNode, ModelNodeWithChilds, ModelUnionNode, MethodDescriptor, ModelMethod } from "@src/schema/model";
 import ts from "typescript";
 import Glob from 'glob';
 import { Visitor } from "@src/utils/utils";
@@ -97,7 +97,7 @@ export function ParseModelFrom(pathPattern:string, compilerOptions: ts.CompilerO
 						d= {};
 						fieldsMap.set(methodName, d);
 					}
-					let di: MethodDescriptorI= {
+					let di: MethodDescriptor= {
 						fileName,
 						className,
 						name: methodName,
@@ -838,7 +838,7 @@ interface NamelessEntity{
 
 /**  */
 interface ResolverItem{
-	input?: MethodDescriptorI,
+	input?: MethodDescriptor,
 	output?: ModelMethod
 }
 /** */
