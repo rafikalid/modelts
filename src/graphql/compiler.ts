@@ -1,5 +1,5 @@
 import { EnumMember, MethodDescriptor, ModelBasicScalar, ModelKind, ModelNode, ModelObjectNode, ModelParam, ModelRefNode, ModelRoot, ModelScalarNode, ModelUnionNode, ObjectField } from "@src/schema/model";
-import { GraphQLArgumentConfig, GraphQLEnumTypeConfig, GraphQLFieldConfig, GraphQLInputField, GraphQLInputFieldConfig, GraphQLScalarTypeConfig } from "graphql";
+import { GraphQLArgumentConfig, GraphQLEnumTypeConfig, GraphQLFieldConfig, GraphQLInputField, GraphQLInputFieldConfig, GraphQLScalarTypeConfig, GraphQLUnionTypeConfig } from "graphql";
 import ts, { isJSDoc } from 'typescript';
 
 /** Compiler response */
@@ -251,22 +251,66 @@ export function compileGraphQL(factory: ts.NodeFactory, pretty: boolean, imports
 				break;
 			case ModelKind.UNION:
 				//* UNION
-				// let unionTypesVar= factory.createUniqueName(entity.name+'_types');
-				// varDeclarationList.push(createNewVarExpression(pretty, factory, entityVar, GraphQLUnionTypeVar, unionTypesVar));
-				// mapNodeVar.set(entity, {input: entityVar, output: entityVar});
-				// unionTypes.push({entity, var: unionTypesVar});
+				let unionTypesVar= factory.createUniqueName(entity.name+'_types');
+				let uParser= entity.parser as MethodDescriptor;
+				let unionImportedDescVar= importsMapper.get(uParser.fileName)!.get(uParser.className)!;
+				if(unionImportedDescVar==null)
+					throw new Error(`UNION>> Expected parser from "${uParser.fileName}::${uParser.className}"`);
+				let unionFields= [
+					factory.createPropertyAssignment(factory.createIdentifier('name'), factory.createStringLiteral(entityName)),
+					factory.createPropertyAssignment(factory.createIdentifier('types'), unionTypesVar),
+					factory.createMethodDeclaration(
+						undefined, undefined, undefined,
+						factory.createIdentifier('resolveType'), undefined, undefined,
+						[
+							factory.createParameterDeclaration(undefined, undefined, undefined, factory.createIdentifier('value'), undefined, factory.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword), undefined),
+							factory.createParameterDeclaration(undefined, undefined, undefined, factory.createIdentifier('ctx'), undefined, factory.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword), undefined),
+							factory.createParameterDeclaration(undefined, undefined, undefined, factory.createIdentifier('info'), undefined, factory.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword), undefined),
+						], undefined,
+						factory.createBlock([
+							factory.createReturnStatement(factory.createElementAccessExpression(
+								unionTypesVar,
+								factory.createCallExpression(
+									factory.createPropertyAccessExpression(unionImportedDescVar, factory.createIdentifier('resolveType')),
+									undefined,
+									[
+										factory.createIdentifier("value"),
+										factory.createIdentifier("ctx"),
+										factory.createIdentifier("info")
+									]
+								)
+							))
+						], pretty)
+					)
+				];
+				let unionConf: {[k in keyof GraphQLUnionTypeConfig<any, any>]: any}= {
+					name:	entityName,
+					types:	unionTypesVar,
+					resolveType: genMethodCall(factory, (entity as ModelUnionNode).parser as MethodDescriptor)
+				};
+				if(entity.jsDoc) unionConf.description= entity.jsDoc;
+				varDeclarationList.push(
+					factory.createVariableDeclaration(unionTypesVar, undefined, undefined, factory.createArrayLiteralExpression([], pretty)),
+					createNewVarExpression(pretty, factory, entityVar, GraphQLUnionTypeVar, serializeObject(factory, pretty,unionConf))
+				);
+				mapNodeVar.set(entity, {input: entityVar, output: entityVar});
+				unionTypes.push({entity, var: unionTypesVar});
 				//* Resolve types
 				let uTypes= entity.children;
-				if(index < uTypes.length){
-					let child= uTypes[index];
+				let uLen= uTypes.length;
+				while(index < uLen){
+					isResolved= false;
+					let child= uTypes[index++];
+					if(child.kind !== ModelKind.REF) throw new Error(`Exprected references for UNION at: ${entity.name}`);
 					let refNode= entitiesMap[child.name!];
+					if(refNode==null) throw new Error(`Union>> Missing reference: ${entity.name}.${child.name}`);
 					if(mapNodeVar.get(refNode)?.output==null){
 						path.add(refNode);
 						queue.push({ entity: refNode, isInput: false, index: 0, entityName: undefined, circles: []});
 						break;
 					}
-					//FIXME Complete working here, resolve all types -------------------------
 				}
+				currentNode.index= index;
 				break;
 			case ModelKind.SCALAR:
 				//* Scalar
@@ -366,6 +410,28 @@ export function compileGraphQL(factory: ts.NodeFactory, pretty: boolean, imports
 				)
 			);
 		}
+	}
+	//* Resolve unions
+	for(let i=0, len= unionTypes.length; i<len; ++i){
+		let {entity, var: varname}= unionTypes[i];
+		let childs= entity.children;
+		let uTypes: ts.Expression[]= [];
+		for(let j=0, jlen= childs.length; j<jlen; ++j){
+			let refNode= entitiesMap[childs[j].name!];
+			if(refNode==null)
+				throw new Error(`Missing entity: ${childs[j].name!}. Found at UNION : ${entity.name}`);
+			let refNodeTs: ts.Expression|undefined= mapNodeVar.get(refNode)?.output;
+			if(refNodeTs==null)
+				throw new Error(`Enexpected missing entity var: ${refNode.name} at UNION: ${entity.name}`);
+			uTypes.push(refNodeTs);
+		}
+		statmentsBlock.push(
+			factory.createExpressionStatement(factory.createCallExpression(
+				factory.createPropertyAccessExpression(varname, factory.createIdentifier('push')),
+				undefined,
+				uTypes
+			))
+		);
 	}
 
 	// Create imports
