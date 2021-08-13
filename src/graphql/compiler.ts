@@ -43,6 +43,7 @@ export function compileGraphQL(factory: ts.NodeFactory, pretty: boolean, imports
 	const GraphQLListVar= factory.createUniqueName('GraphQLList');
 	const GraphQLNonNullVar= factory.createUniqueName('GraphQLNonNull');
 	const GraphQLUnionTypeVar= factory.createUniqueName('GraphQLUnionType');
+	const GraphQLFieldResolverVar= factory.createUniqueName('GraphQLFieldResolver');
 	importGqlVars
 		.set('GraphQLScalarType', GraphQLScalarTypeVar)
 		.set('GraphQLSchema', GraphQLSchemaVar)
@@ -51,7 +52,8 @@ export function compileGraphQL(factory: ts.NodeFactory, pretty: boolean, imports
 		.set('GraphQLInputObjectType', GraphQLInputObjectTypeVar)
 		.set('GraphQLList', GraphQLListVar)
 		.set('GraphQLNonNull', GraphQLNonNullVar)
-		.set('GraphQLUnionType', GraphQLUnionTypeVar);
+		.set('GraphQLUnionType', GraphQLUnionTypeVar)
+		.set('GraphQLFieldResolver', GraphQLFieldResolverVar);
 	//* Model imports
 	const uIntScalarVar= factory.createUniqueName('uIntScalar');
 	const uFloatScalar= factory.createUniqueName('uFloatScalar');
@@ -76,7 +78,6 @@ export function compileGraphQL(factory: ts.NodeFactory, pretty: boolean, imports
 	if(entity= entitiesMap.Subscription) queue.push({entity, isInput: false, index: 0, entityName: 'Subscription', circles: []});
 	var entityVar: ts.Identifier;
 	var childs: ModelNode[];
-	var mx= 0;
 	/** Union types */
 	const unionTypes: {entity: ModelUnionNode, var: ts.Identifier}[]= [];
 	/** Path for output */
@@ -84,10 +85,6 @@ export function compileGraphQL(factory: ts.NodeFactory, pretty: boolean, imports
 	/** Path for input */
 	const inputPath: Set<ModelNode>= new Set();
 	while(true){
-		if(mx++>10000){
-			console.log('----- <STOP> -----');
-			break;
-		}
 		let queueLen= queue.length;
 		if(queueLen===0) break;
 		let currentNode= queue[queueLen-1];
@@ -207,7 +204,18 @@ export function compileGraphQL(factory: ts.NodeFactory, pretty: boolean, imports
 						if(entity.jsDoc) obj.description= entity.jsDoc;
 						varDeclarationList.push(
 							// Field var
-							factory.createVariableDeclaration(fieldsVar, undefined, undefined, serializeObject(factory, pretty, fields)),
+							factory.createVariableDeclaration(
+								fieldsVar,
+								undefined,
+								factory.createTypeReferenceNode(
+									factory.createIdentifier("Record"),
+									[
+										factory.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword),
+										factory.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword)
+									]
+								),
+								serializeObject(factory, pretty, fields)
+							),
 							// Object
 							createNewVarExpression(pretty, factory, entityVar,
 								isInput ? GraphQLInputObjectTypeVar: GraphQLObjectTypeVar,
@@ -251,7 +259,8 @@ export function compileGraphQL(factory: ts.NodeFactory, pretty: boolean, imports
 				break;
 			case ModelKind.UNION:
 				//* UNION
-				let unionTypesVar= factory.createUniqueName(entity.name+'_types');
+				if(mapNodeVar.has(entity)) break;
+				let unionTypesVar= factory.createUniqueName(entityName+'_types');
 				let uParser= entity.parser as MethodDescriptor;
 				let unionImportedDescVar= importsMapper.get(uParser.fileName)!.get(uParser.className)!;
 				if(unionImportedDescVar==null)
@@ -283,15 +292,14 @@ export function compileGraphQL(factory: ts.NodeFactory, pretty: boolean, imports
 						], pretty)
 					)
 				];
-				let unionConf: {[k in keyof GraphQLUnionTypeConfig<any, any>]: any}= {
-					name:	entityName,
-					types:	unionTypesVar,
-					resolveType: genMethodCall(factory, (entity as ModelUnionNode).parser as MethodDescriptor)
-				};
-				if(entity.jsDoc) unionConf.description= entity.jsDoc;
+				if(entity.jsDoc)
+					unionFields.push(factory.createPropertyAssignment(factory.createIdentifier('description'), factory.createStringLiteral(entity.jsDoc)));
 				varDeclarationList.push(
-					factory.createVariableDeclaration(unionTypesVar, undefined, undefined, factory.createArrayLiteralExpression([], pretty)),
-					createNewVarExpression(pretty, factory, entityVar, GraphQLUnionTypeVar, serializeObject(factory, pretty,unionConf))
+					factory.createVariableDeclaration(unionTypesVar, undefined, factory.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword), factory.createArrayLiteralExpression([], pretty)),
+					createNewVarExpression(
+						pretty, factory, entityVar, GraphQLUnionTypeVar,
+						factory.createObjectLiteralExpression(unionFields, pretty)
+					)
 				);
 				mapNodeVar.set(entity, {input: entityVar, output: entityVar});
 				unionTypes.push({entity, var: unionTypesVar});
@@ -347,29 +355,29 @@ export function compileGraphQL(factory: ts.NodeFactory, pretty: boolean, imports
 						break;
 					case 'uInt':
 						// entityVar= factory.createUniqueName(entityName);
+						let uIntConf: {[k in keyof GraphQLScalarTypeConfig<any, any>]: any}= {
+							name:			entityName,
+							parseValue:		factory.createPropertyAccessExpression(uIntScalarVar, factory.createIdentifier('parse')),
+							serialize:		factory.createPropertyAccessExpression(uIntScalarVar, factory.createIdentifier('serialize'))
+						};
+						if(entity.jsDoc) uIntConf.description= entity.jsDoc;
 						varDeclarationList.push(
 							createNewVarExpression(
-								pretty, factory, entityVar, GraphQLScalarTypeVar, serializeObject(factory, pretty, {
-									name:			entityName,
-									description:	entity.jsDoc,
-									parser: factory.createPropertyAccessExpression(
-										uIntScalarVar, factory.createIdentifier('parse')
-									)
-								})
+								pretty, factory, entityVar, GraphQLScalarTypeVar, serializeObject(factory, pretty, uIntConf)
 							)
 						)
 						break;
 					case 'uFloat':
 						// entityVar= factory.createUniqueName(entityName);
+						let uFloatConf: {[k in keyof GraphQLScalarTypeConfig<any, any>]: any}= {
+							name:			entityName,
+							parseValue:		factory.createPropertyAccessExpression(uFloatScalar, factory.createIdentifier('parse')),
+							serialize:		factory.createPropertyAccessExpression(uFloatScalar, factory.createIdentifier('serialize'))
+						};
+						if(entity.jsDoc) uFloatConf.description= entity.jsDoc;
 						varDeclarationList.push(
 							createNewVarExpression(
-								pretty, factory, entityVar, GraphQLScalarTypeVar, serializeObject(factory, pretty, {
-									name:			entityName,
-									description:	entity.jsDoc,
-									parser: factory.createPropertyAccessExpression(
-										uFloatScalar, factory.createIdentifier('parse')
-									)
-								})
+								pretty, factory, entityVar, GraphQLScalarTypeVar, serializeObject(factory, pretty, uFloatConf)
 							)
 						)
 						break;
@@ -539,7 +547,7 @@ export function compileGraphQL(factory: ts.NodeFactory, pretty: boolean, imports
 			if(field.deprecated) obj.deprecationReason= field.deprecated;
 			result= serializeObject(factory, pretty, obj);
 		} else {
-			let obj: {[k in keyof GraphQLFieldConfig<any,any>]: any}= {
+			let obj: {[k in keyof GraphQLFieldConfig<any,any, any>]: any}= {
 				type:				refNodeTs,
 				//TODO args?:		GraphQLFieldConfigArgumentMap;
 			};
@@ -547,10 +555,20 @@ export function compileGraphQL(factory: ts.NodeFactory, pretty: boolean, imports
 			if(deprecated) obj.deprecationReason= deprecated;
 			let comment= field.resolver?.jsDoc ?? field.jsDoc;
 			if(comment) obj.description= comment;
-			// Resolver method
+			//* Resolver method
 			if(field.resolver?.method){
-				obj.resolve= genMethodCall(factory, field.resolver.method);
-				// Params
+				// Method signature
+				obj.resolve= factory.createAsExpression(
+					genMethodCall(factory, field.resolver.method),
+					factory.createTypeReferenceNode(
+						GraphQLFieldResolverVar,
+						[
+						  factory.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword),
+						  factory.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword)
+						]
+					  )
+				);
+				// Method Params
 				let child= field.resolver.children[1] as ModelParam;
 				if(child!=null && child.children.length!==0){
 					let ref= child.children[0] as ModelRefNode;
