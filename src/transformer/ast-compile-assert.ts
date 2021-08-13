@@ -1,4 +1,4 @@
-import { assert, AssertOptions } from "@src/model/decorators";
+import { AssertOptions } from "@src/model/decorators";
 import { ModelNode } from "@src/schema/model";
 import ts from "typescript";
 

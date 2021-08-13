@@ -1,3 +1,4 @@
+import { InputResolver } from "@src/helpers/interfaces";
 import { EnumMember, MethodDescriptor, ModelBasicScalar, ModelKind, ModelNode, ModelObjectNode, ModelParam, ModelRefNode, ModelRoot, ModelScalarNode, ModelUnionNode, ObjectField } from "@src/schema/model";
 import { GraphQLArgumentConfig, GraphQLEnumTypeConfig, GraphQLFieldConfig, GraphQLInputField, GraphQLInputFieldConfig, GraphQLScalarTypeConfig, GraphQLUnionTypeConfig } from "graphql";
 import ts, { isJSDoc } from 'typescript';
@@ -57,6 +58,7 @@ export function compileGraphQL(factory: ts.NodeFactory, pretty: boolean, imports
 	//* Model imports
 	const uIntScalarVar= factory.createUniqueName('uIntScalar');
 	const uFloatScalar= factory.createUniqueName('uFloatScalar');
+	const inputValidationWrapperVar= factory.createUniqueName('inputValidationWrapper');
 	// Queue
 	interface QueueInterface{
 		entity:		ModelNode
@@ -460,7 +462,8 @@ export function compileGraphQL(factory: ts.NodeFactory, pretty: boolean, imports
 			undefined, undefined,
 			factory.createImportClause(false, undefined, factory.createNamedImports([
 				factory.createImportSpecifier(factory.createIdentifier('uIntScalar'), uIntScalarVar),
-				factory.createImportSpecifier(factory.createIdentifier('uFloatScalar'), uFloatScalar)
+				factory.createImportSpecifier(factory.createIdentifier('uFloatScalar'), uFloatScalar),
+				factory.createImportSpecifier(factory.createIdentifier('inputValidationWrapper'), inputValidationWrapperVar)
 			])),
 			factory.createStringLiteral('tt-model')
 		)
@@ -558,16 +561,7 @@ export function compileGraphQL(factory: ts.NodeFactory, pretty: boolean, imports
 			//* Resolver method
 			if(field.resolver?.method){
 				// Method signature
-				obj.resolve= factory.createAsExpression(
-					genMethodCall(factory, field.resolver.method),
-					factory.createTypeReferenceNode(
-						GraphQLFieldResolverVar,
-						[
-						  factory.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword),
-						  factory.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword)
-						]
-					  )
-				);
+				let resolveCb= genMethodCall(factory, field.resolver!.method);
 				// Method Params
 				let child= field.resolver.children[1] as ModelParam;
 				if(child!=null && child.children.length!==0){
@@ -592,6 +586,10 @@ export function compileGraphQL(factory: ts.NodeFactory, pretty: boolean, imports
 						}
 					}
 					obj.args= serializeObject(factory, pretty, param);
+					// Wrap resolver
+					obj.resolve= _wrapResolver(resolveCb, paramEntity);
+				} else {
+					obj.resolve= _wrapResolver(resolveCb);
 				}
 			}
 			// Add
@@ -600,12 +598,33 @@ export function compileGraphQL(factory: ts.NodeFactory, pretty: boolean, imports
 		return result;
 	}
 	/** Generate methods call */
-	function genMethodCall(factory: ts.NodeFactory, r: MethodDescriptor, methodName?:string){
+	function genMethodCall(factory: ts.NodeFactory, r: MethodDescriptor, methodName?:string): ts.Expression{
 		var varId= importsMapper.get(r.fileName)!.get(r.className)!;
 		methodName??= r.name;
 		return factory.createPropertyAccessExpression(
 			varId,
 			factory.createIdentifier(r.isStatic ? methodName! : `prototype.${methodName}`)
+		);
+	}
+	/** Generate resolver with validation & input wrapper */
+	function _wrapResolver(resolveCb: ts.Expression, inputEntity?: ModelObjectNode): ts.Expression{
+		//* Collect input resolvers & validation
+		// FIXME Add validation wrapper
+		// if(inputEntity!=null){
+		// 	var vld= inputV.map.get(inputEntity);
+		// 	if(vld==null) throw new Error(`Missing input data for entity: ${inputEntity.name}`);
+		// 	resolveCb= factory.createCallExpression(inputValidationWrapperVar, undefined, [vld, resolveCb]);
+		// }
+		//* Return
+		return factory.createAsExpression(
+			resolveCb,
+			factory.createTypeReferenceNode(
+				GraphQLFieldResolverVar,
+				[
+				factory.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword),
+				factory.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword)
+				]
+			)
 		);
 	}
 }
@@ -683,3 +702,10 @@ function serializeObject(
 // ){
 // 	return factory.createFunctionExpression(undefined, undefined, undefined, undefined, params, undefined, factory.createBlock(block, pretty));
 // }
+
+/** Collection input resolvers & asserts */
+function getInputResolverAndAssertsOfFiled(factory: ts.NodeFactory, field: ObjectField, pretty: boolean): ts.ArrayLiteralExpression | undefined{
+	var result: ts.Expression[]=[];
+	
+	if(result.length) return factory.createArrayLiteralExpression(result, pretty);
+}
