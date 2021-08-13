@@ -27,6 +27,8 @@ interface CircleEntities{
 export function compileGraphQL(factory: ts.NodeFactory, pretty: boolean, importsMapper: Map<string, Map<string, ts.Identifier>>, ast: ModelRoot):GqlCompilerResp{
 	/** Map entity to TYPSCRIPT var */
 	const mapNodeVar: Map<ModelNode, MapRef>= new Map();
+	/** Input validation vars: map each input node to it's representative variable */
+	const inputValidationVars: Map<ModelNode, ts.Identifier>= new Map();
 	/** Circle fields */
 	const circleMapFields:CircleEntities[]= [];
 	/** Entity names: add new names for INPUT or OUTPUT */
@@ -152,22 +154,22 @@ export function compileGraphQL(factory: ts.NodeFactory, pretty: boolean, imports
 						//* Param
 						queue.push({ entity: refNode, isInput: true, index: 0, entityName: undefined, circles: []});
 					}
-					let refNodeEl: ts.Expression|undefined= isInput ? mapNodeVar.get(refNode)?.input : mapNodeVar.get(refNode)?.output;
-					if(refNodeEl==null){
-						isResolved= false;
-						// Check for circles
-						if(isInput){
-							// Go dept
-							queue.push({ entity: refNode, isInput, index: 0, entityName: undefined, circles: []});
-						} else if(path.has(refNode)) {
-							currentNode.parent!.circles.push(field);
-						} else {
-							// Go dept
-							path.add(refNode);
-							queue.push({ entity: refNode, isInput, index: 0, entityName: undefined, circles: []});
-						}
-						break;
-					}
+					// let refNodeEl: ts.Expression|undefined= isInput ? mapNodeVar.get(refNode)?.input : mapNodeVar.get(refNode)?.output;
+					// if(refNodeEl==null){
+					// 	isResolved= false;
+					// 	// Check for circles
+					// 	if(isInput){
+					// 		// Go dept
+					// 		queue.push({ entity: refNode, isInput, index: 0, entityName: undefined, circles: []});
+					// 	} else if(path.has(refNode)) {
+					// 		currentNode.parent!.circles.push(field);
+					// 	} else {
+					// 		// Go dept
+					// 		path.add(refNode);
+					// 		queue.push({ entity: refNode, isInput, index: 0, entityName: undefined, circles: []});
+					// 	}
+					// 	break;
+					// }
 				}
 				currentNode.index= index;
 				break;
