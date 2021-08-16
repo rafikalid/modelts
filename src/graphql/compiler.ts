@@ -139,6 +139,7 @@ export function compileGraphQL(factory: ts.NodeFactory, pretty: boolean, imports
 					else if(child= field.resolver?.children[1]!){// 2 as input
 						isInput= true;
 					} else break;
+					if(child==null) throw new Error(`Enexpected empty child at: ${currentNode.parent!.entity.name}.${field.name}`);
 					// Escape wrapping list
 					while(child.kind!== ModelKind.REF){
 						child= (child as ObjectField).children[0];
