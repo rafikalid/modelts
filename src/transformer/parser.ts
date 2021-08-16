@@ -664,12 +664,15 @@ export function ParseModelFrom(pathPattern:string, compilerOptions: ts.CompilerO
 					console.warn(`>> Escaped ${ts.SyntaxKind[node.kind]} from parent ${ModelKind[pkind]}: ${node.parent.getText()} at ${fileName}`);
 					continue;
 				}
+				meta= _getNodeMetadata(node, typeChecker);
 				currentNode = {
-					kind:	ModelKind.LIST,
-					name:	undefined,
-					jsDoc:	undefined,
-					deprecated: undefined,
-					children: []
+					kind:		ModelKind.LIST,
+					name:		undefined,
+					jsDoc:		meta.jsDoc,
+					deprecated:	meta.deprecated,
+					children:	[],
+					asserts:	meta.asserts,
+					input:		undefined
 				};
 				(pDesc as ModelNodeWithChilds).children[0] = currentNode;
 				// Go through childs

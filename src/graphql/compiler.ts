@@ -1,5 +1,7 @@
+import { GqlField, GqlListNode } from "@src/compiler/gql-model";
 import { InputResolver } from "@src/helpers/interfaces";
-import { EnumMember, MethodDescriptor, ModelBasicScalar, ModelKind, ModelNode, ModelObjectNode, ModelParam, ModelRefNode, ModelRoot, ModelScalarNode, ModelUnionNode, ObjectField } from "@src/schema/model";
+import { EnumMember, MethodDescriptor, ModelBasicScalar, ModelKind, ModelListNode, ModelNode, ModelObjectNode, ModelParam, ModelRefNode, ModelRoot, ModelScalarNode, ModelUnionNode, ObjectField } from "@src/schema/model";
+import { compileAsserts } from "@src/transformer/ast-compile-assert";
 import { GraphQLArgumentConfig, GraphQLEnumTypeConfig, GraphQLFieldConfig, GraphQLInputField, GraphQLInputFieldConfig, GraphQLScalarTypeConfig, GraphQLUnionTypeConfig } from "graphql";
 import ts, { isJSDoc } from 'typescript';
 
@@ -21,21 +23,28 @@ interface CircleEntities{
 	/** Fields with circles */
 	fields: ObjectField[]
 }
+
+interface ParamItem{
+	var: ts.Identifier
+	len: number
+}
 /**
  * Compile Model to Graphql
  */
 export function compileGraphQL(factory: ts.NodeFactory, pretty: boolean, importsMapper: Map<string, Map<string, ts.Identifier>>, ast: ModelRoot):GqlCompilerResp{
 	/** Map entity to TYPSCRIPT var */
 	const mapNodeVar: Map<ModelNode, MapRef>= new Map();
-	/** Input validation vars: map each input node to it's representative variable */
-	const inputValidationVars: Map<ModelNode, ts.Identifier>= new Map();
+	const paramsEntityVars: Map<ModelNode, ParamItem>= new Map();
 	/** Circle fields */
 	const circleMapFields:CircleEntities[]= [];
+	const circleVldMapFields:CircleEntities[]= [];
 	/** Entity names: add new names for INPUT or OUTPUT */
 	const entityNameSet: Set<string>= new Set();
 	var entitiesMap= ast.mapChilds, entity: ModelNode;
 	/** Variable declaration list */
 	const varDeclarationList: ts.VariableDeclaration[]= [];
+	/** Validation schema decaration */
+	const inputValidationDeclarationList: ts.VariableDeclaration[]= [];
 	/** map imports */
 	const importGqlVars: Map<string, ts.Identifier>= new Map();
 	const GraphQLScalarTypeVar= factory.createUniqueName('GraphQLScalarType');
@@ -81,6 +90,7 @@ export function compileGraphQL(factory: ts.NodeFactory, pretty: boolean, imports
 	if(entity= entitiesMap.Mutation) queue.push({entity, isInput: false, index: 0, entityName: 'Mutation', circles: []});
 	if(entity= entitiesMap.Subscription) queue.push({entity, isInput: false, index: 0, entityName: 'Subscription', circles: []});
 	var entityVar: ts.Identifier;
+	var inputValidationVar: ts.Identifier;
 	var childs: ModelNode[];
 	/** Union types */
 	const unionTypes: {entity: ModelUnionNode, var: ts.Identifier}[]= [];
@@ -113,6 +123,7 @@ export function compileGraphQL(factory: ts.NodeFactory, pretty: boolean, imports
 		}
 		/** Entity var */
 		entityVar= factory.createUniqueName(entityName);
+		inputValidationVar= factory.createUniqueName(entityName);
 		let isResolved= true;
 		// Switch Node type:
 		switch(entity.kind){
@@ -152,24 +163,9 @@ export function compileGraphQL(factory: ts.NodeFactory, pretty: boolean, imports
 						}
 					} else {
 						//* Param
+						isResolved = false;
 						queue.push({ entity: refNode, isInput: true, index: 0, entityName: undefined, circles: []});
 					}
-					// let refNodeEl: ts.Expression|undefined= isInput ? mapNodeVar.get(refNode)?.input : mapNodeVar.get(refNode)?.output;
-					// if(refNodeEl==null){
-					// 	isResolved= false;
-					// 	// Check for circles
-					// 	if(isInput){
-					// 		// Go dept
-					// 		queue.push({ entity: refNode, isInput, index: 0, entityName: undefined, circles: []});
-					// 	} else if(path.has(refNode)) {
-					// 		currentNode.parent!.circles.push(field);
-					// 	} else {
-					// 		// Go dept
-					// 		path.add(refNode);
-					// 		queue.push({ entity: refNode, isInput, index: 0, entityName: undefined, circles: []});
-					// 	}
-					// 	break;
-					// }
 				}
 				currentNode.index= index;
 				break;
@@ -229,6 +225,7 @@ export function compileGraphQL(factory: ts.NodeFactory, pretty: boolean, imports
 					} else {
 						varDeclarationList.push(_compilePlainObject(entity, entityName, entityVar, isInput));
 					}
+					if(isInput) _compileInputValidation(inputValidationDeclarationList, entity, entityName, inputValidationVar, currentNode.circles);
 					_addMapNodeVar(mapNodeVar, entity, entityVar, isInput);
 				} else {
 					//* Missing fields
@@ -246,10 +243,7 @@ export function compileGraphQL(factory: ts.NodeFactory, pretty: boolean, imports
 					};
 					if(child.jsDoc) obj.description= child.jsDoc;
 					if(child.deprecated) obj.deprecationReason= child.deprecated;
-					enumValues.push(factory.createPropertyAssignment(
-						factory.createIdentifier(child.name!),
-						serializeObject(factory, pretty, obj)
-					))
+					enumValues.push(factory.createPropertyAssignment(child.name!, serializeObject(factory, pretty, obj) ))
 				}
 				let entityDesc: {[k in keyof GraphQLEnumTypeConfig]: any}= {
 					name:	entityName,
@@ -270,8 +264,8 @@ export function compileGraphQL(factory: ts.NodeFactory, pretty: boolean, imports
 				if(unionImportedDescVar==null)
 					throw new Error(`UNION>> Expected parser from "${uParser.fileName}::${uParser.className}"`);
 				let unionFields= [
-					factory.createPropertyAssignment(factory.createIdentifier('name'), factory.createStringLiteral(entityName)),
-					factory.createPropertyAssignment(factory.createIdentifier('types'), unionTypesVar),
+					factory.createPropertyAssignment('name', factory.createStringLiteral(entityName)),
+					factory.createPropertyAssignment('types', unionTypesVar),
 					factory.createMethodDeclaration(
 						undefined, undefined, undefined,
 						factory.createIdentifier('resolveType'), undefined, undefined,
@@ -297,7 +291,7 @@ export function compileGraphQL(factory: ts.NodeFactory, pretty: boolean, imports
 					)
 				];
 				if(entity.jsDoc)
-					unionFields.push(factory.createPropertyAssignment(factory.createIdentifier('description'), factory.createStringLiteral(entity.jsDoc)));
+					unionFields.push(factory.createPropertyAssignment('description', factory.createStringLiteral(entity.jsDoc)));
 				varDeclarationList.push(
 					factory.createVariableDeclaration(unionTypesVar, undefined, factory.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword), factory.createArrayLiteralExpression([], pretty)),
 					createNewVarExpression(
@@ -400,11 +394,36 @@ export function compileGraphQL(factory: ts.NodeFactory, pretty: boolean, imports
 
 	// add variable declarations
 	const statmentsBlock: ts.Statement[]= [
+		// Validation
+		factory.createVariableStatement(
+			undefined,
+			factory.createVariableDeclarationList(inputValidationDeclarationList)
+		),
+		// Graphql schema
 		factory.createVariableStatement(
 			undefined,
 			factory.createVariableDeclarationList(varDeclarationList)
 		)
 	];
+	//* Resolve validation circles
+	for(let i=0, len= circleVldMapFields.length; i<len; ++i){
+		let {entity, fieldsVar, fields}= circleVldMapFields[i];
+		let desc= paramsEntityVars.get(entity)!
+		if(desc==null) throw new Error(`Enexpected missing var for entity validation for: ${entity.name}`);
+		for(let j=0, jlen= fields.length; j<jlen; ++j){
+			let field= fields[j] as ObjectField;
+			let f= _compileVldField(entity, field);
+			if(f!=null){
+				++desc.len;
+				statmentsBlock.push(
+					factory.createExpressionStatement(factory.createCallExpression(
+						factory.createPropertyAccessExpression( fieldsVar, factory.createIdentifier("push")),
+						undefined, [ f ]
+					))
+				);
+			}
+		}
+	}
 	// Resolve circles
 	for(let i=0, len= circleMapFields.length; i<len; ++i){
 		let {entity, fieldsVar, isInput, fields}= circleMapFields[i];
@@ -434,7 +453,7 @@ export function compileGraphQL(factory: ts.NodeFactory, pretty: boolean, imports
 				throw new Error(`Missing entity: ${childs[j].name!}. Found at UNION : ${entity.name}`);
 			let refNodeTs: ts.Expression|undefined= mapNodeVar.get(refNode)?.output;
 			if(refNodeTs==null)
-				throw new Error(`Enexpected missing entity var: ${refNode.name} at UNION: ${entity.name}`);
+				throw new Error(`Enexpected missing UNION: ${refNode.name} at UNION: ${entity.name}`);
 			uTypes.push(refNodeTs);
 		}
 		statmentsBlock.push(
@@ -510,6 +529,104 @@ export function compileGraphQL(factory: ts.NodeFactory, pretty: boolean, imports
 			})
 		)
 	}
+	/** Compile validation input object */
+	function _compileInputValidation(varList: ts.VariableDeclaration[], entity: ModelObjectNode, entityName: string, entityVar: ts.Identifier, circles?: ObjectField[]){
+		let fields: ts.Expression[]= [];
+		let childs= entity.children;
+		if(circles==null || circles.length===0){
+			//* Object has all it's fields
+			for(let i=0, len= childs.length; i<len; ++i){
+				let f= _compileVldField(entity, childs[i] as ObjectField)
+				if(f!=null) fields.push(f);
+			}
+			// add object definition
+			if(fields.length)
+				varList.push(factory.createVariableDeclaration(
+					entityVar, undefined,
+					factory.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword),
+					serializeObject(factory, pretty, {
+						kind: ModelKind.PLAIN_OBJECT,
+						fields: factory.createArrayLiteralExpression(fields, pretty)
+					})
+				));
+		} else {
+			//* Missing fields will be added later
+			let fieldsVar= factory.createUniqueName(entityName+'_fileds');
+			for(let i=0, len= childs.length; i<len; ++i){
+				let field= childs[i] as ObjectField;
+				if(circles.indexOf(field)===-1){
+					let f= _compileVldField(entity, field)
+					if(f!=null) fields.push(f);
+				}
+			}
+			circleVldMapFields.push({ entity, isInput: true, fieldsVar, fields: circles });
+			varList.push(
+				// Fields
+				factory.createVariableDeclaration(
+					fieldsVar, undefined,
+					factory.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword),
+					factory.createArrayLiteralExpression(fields, pretty)
+				),
+				// Add object definition
+				factory.createVariableDeclaration(
+					entityVar, undefined,
+					factory.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword),
+					serializeObject(factory, pretty, {
+						kind: ModelKind.PLAIN_OBJECT,
+						fields: fieldsVar
+					})
+				)
+			);
+		}
+		paramsEntityVars.set(entity, {var: entityVar, len: fields.length});
+	}
+	/** Compile validation field */
+	type compileTargetTypes= ObjectField|ModelListNode|ModelRefNode;
+	function _compileVldField(entity: ModelObjectNode, field: ObjectField): ts.ObjectLiteralExpression|undefined{
+		if(field.asserts!=null || field.input!=null){
+			// Wrappers (list, required)
+			var fieldProperties: ts.ObjectLiteralElementLike[]= [
+				factory.createPropertyAssignment('kind', factory.createNumericLiteral(ModelKind.FIELD)),
+				factory.createPropertyAssignment('name', factory.createStringLiteral(field.name))
+			];
+			var parentProperties: ts.ObjectLiteralElementLike[]|undefined;
+			let child: compileTargetTypes= field;
+			while(child.kind!== ModelKind.REF){
+				let properties: ts.ObjectLiteralElementLike[];
+				if(parentProperties==null){
+					properties= fieldProperties;
+				} else {
+					// LIST
+					properties= [];
+					parentProperties.push(
+						factory.createPropertyAssignment('type', factory.createObjectLiteralExpression(properties, pretty))
+					);
+				}
+				// Input
+				if(child.input!=null)
+					properties.push(factory.createPropertyAssignment('input', genMethodCall(factory, child.input)));
+				// Asserts
+				let assertTs: ts.MethodDeclaration | undefined;
+				if(child.asserts!=null && (assertTs= compileAsserts(`${entity.name}.${field.name}`, child.asserts, field.children[0], factory, pretty))!= null)
+					properties.push(assertTs);
+				// Next
+				parentProperties= properties;
+				child= (child as ObjectField).children[0] as compileTargetTypes;
+				if(child==null)
+					throw new Error(`Validation>> Enexpected empty list! at ${entity.name}.${field.name}`);
+			}
+			
+			// Resolve reference
+			let refNode= entitiesMap[child.name!];
+			if(refNode==null) throw new Error(`Missing entity: ${child.name}. Found at: ${entity.name}.${field.name}`);
+			let refNodeTs: ts.Expression|undefined= paramsEntityVars.get(refNode)?.var;
+			if(refNodeTs!=null){
+				parentProperties?.push(factory.createPropertyAssignment('type', refNodeTs));
+			}
+			// return field
+			return factory.createObjectLiteralExpression(fieldProperties, pretty);
+		}
+	}
 	/** Compile each field part */
 	function compileEachFieldPart(entity: ModelObjectNode, field: ObjectField, child: ModelNode, isInput: boolean): ts.Expression{
 		// Wrappers (list, required)
@@ -527,7 +644,7 @@ export function compileGraphQL(factory: ts.NodeFactory, pretty: boolean, imports
 			throw new Error(`Missing entity: ${child.name}. Found at: ${entity.name}.${field.name}`);
 		let refNodeTs: ts.Expression|undefined= isInput ? mapNodeVar.get(refNode)?.input : mapNodeVar.get(refNode)?.output;
 		if(refNodeTs==null){
-			throw new Error(`Enexpected missing entity var: ${refNode.name} at ${entity.name}.${field.name}`);
+			throw new Error(`Enexpected missing entity ${isInput? 'Input': 'Output'}: ${refNode.name} at ${entity.name}.${field.name}`);
 		}
 		// Put wrappers
 		for(let i=0, len= wrappers.length; i<len; ++i){
@@ -611,12 +728,10 @@ export function compileGraphQL(factory: ts.NodeFactory, pretty: boolean, imports
 	/** Generate resolver with validation & input wrapper */
 	function _wrapResolver(resolveCb: ts.Expression, inputEntity?: ModelObjectNode): ts.Expression{
 		//* Collect input resolvers & validation
-		// FIXME Add validation wrapper
-		// if(inputEntity!=null){
-		// 	var vld= inputV.map.get(inputEntity);
-		// 	if(vld==null) throw new Error(`Missing input data for entity: ${inputEntity.name}`);
-		// 	resolveCb= factory.createCallExpression(inputValidationWrapperVar, undefined, [vld, resolveCb]);
-		// }
+		var vr: ParamItem
+		if(inputEntity!=null && (vr= paramsEntityVars.get(inputEntity)!)!=null && vr.len > 0){
+			resolveCb= factory.createCallExpression(inputValidationWrapperVar, undefined, [vr.var, resolveCb]);
+		}
 		//* Return
 		return factory.createAsExpression(
 			resolveCb,
@@ -680,7 +795,7 @@ function createNewExp(
 function serializeObject(
 	factory: ts.NodeFactory,
 	pretty: boolean,
-	fields: Record<string, ts.Expression|string|number|undefined>
+	fields: Record<string, ts.Expression|string|number|boolean|undefined>
 ){
 	var fieldArr: ts.ObjectLiteralElementLike[]= [];
 	for(let k in fields){
@@ -688,6 +803,7 @@ function serializeObject(
 		if(v==null) v= factory.createIdentifier('undefined');
 		else if(typeof v==='string') v= factory.createStringLiteral(v);
 		else if(typeof v==='number') v= factory.createNumericLiteral(v);
+		else if(typeof v==='boolean') v= v===true ? factory.createTrue() : factory.createFalse();
 		fieldArr.push(
 			factory.createPropertyAssignment( factory.createIdentifier(k), v ),
 		)

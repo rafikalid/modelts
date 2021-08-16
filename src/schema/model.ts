@@ -92,6 +92,10 @@ export interface ModelEnumNode extends ModelNodeWithChilds{
 /** List kinds */
 export interface ModelListNode extends ModelNodeWithChilds{
 	kind:		ModelKind.LIST
+	/** Input resolver */
+	input:		MethodDescriptor|undefined
+	/** Input Assert */
+	asserts:	AssertOptions|undefined
 }
 
 /** Union of multiple kinds */
@@ -109,6 +113,8 @@ export interface ModelRefNode extends ModelBaseNode{
 /** Object fields */
 export interface ObjectField extends ModelNodeWithChilds{
 	kind: ModelKind.FIELD,
+	/** Field name */
+	name: string,
 	/** Is required */
 	required:	boolean
 	/** Output Resolver */

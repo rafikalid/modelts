@@ -57,14 +57,9 @@ export function serializeAST(root: ModelRoot, factory: ts.NodeFactory, importsMa
 					factory.createPropertyAssignment(factory.createIdentifier("input"), node.input ? _serializeMethod(node.input, factory, importsMapper, PRETTY) : factory.createIdentifier('undefined'))
 				);
 				// Asserts
-				nodeProperties.push(
-					node.asserts &&
-						compileAsserts(node.name, node.asserts, node.children[0], factory, PRETTY)
-						|| factory.createPropertyAssignment(
-							factory.createIdentifier("asserts"),
-					 		factory.createIdentifier('undefined')
-						)
-				);
+				let assertC: ts.MethodDeclaration | undefined;
+				if(node.asserts && (assertC= compileAsserts(node.name, node.asserts, node.children[0], factory, PRETTY))!=null)
+					nodeProperties.push(assertC);
 				// Resolver
 				if((node as ObjectField).resolver){
 					let fieldObjFields: ts.ObjectLiteralElementLike[]= [];

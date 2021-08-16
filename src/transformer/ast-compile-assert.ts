@@ -97,7 +97,7 @@ export function compileAsserts(name: string | undefined, asserts: AssertOptions,
 		return undefined;
 	else
 		return factory.createMethodDeclaration( undefined, undefined, undefined,
-			factory.createIdentifier("asserts"), undefined, undefined,
+			factory.createIdentifier("assert"), undefined, undefined,
 			// Argument
 			[factory.createParameterDeclaration(
 				undefined, undefined, undefined, factory.createIdentifier("value"),

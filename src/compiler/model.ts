@@ -24,9 +24,16 @@ export interface Field{
 	assert?:	(value: unknown)=> unknown
 }
 
-/** Field with validator */
-
-
+/** List */
+export interface ListNode{
+	kind: ModelKind.LIST
+	/** items type */
+	type: Node
+	/** Input validator */
+	input?:		InputResolver<unknown, unknown>
+	/** Asserts */
+	assert?:	(value: unknown)=> unknown
+}
 /** Enum */
 export interface EnumNode{
 	kind: ModelKind.ENUM
@@ -43,12 +50,6 @@ export interface UnionNode{
 	resolve: (data: unknown)=> Node
 }
 
-/** List */
-export interface ListNode{
-	kind: ModelKind.LIST
-	/** items type */
-	type: Node
-}
 
 /** Scalar */
 export interface ScalarNode<T>{
