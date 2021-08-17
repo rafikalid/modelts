@@ -583,7 +583,7 @@ export function ParseModelFrom(pathPattern:string, compilerOptions: ts.CompilerO
 	
 						// resolve generics
 						let nodeArgs= (node as ts.TypeReferenceNode).typeArguments;
-						if(nodeArgs?.length){
+						if(nodeArgs?.length && (s as ts.InterfaceDeclaration).typeParameters!=null){
 							generics= new Map(generics!);
 							let targetArgs= (s as ts.InterfaceDeclaration).typeParameters!
 							for(let i=0, len= nodeArgs.length; i<len; ++i){

@@ -46,7 +46,7 @@ function _validate(config: GqlObjectNode, data: any, ctx:any, info: any){
 					// input value
 					inputCb= node.input;
 					if(inputCb!=null)
-						parentData[node.name]= inputCb(parentData, data, ctx, info);
+						parentData[node.name]= data= inputCb(parentData, data, ctx, info);
 				} else {
 					queue.push({node: fieldType, parentData, data, index: 0});
 					resolved= false;
