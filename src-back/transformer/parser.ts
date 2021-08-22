@@ -756,6 +756,7 @@ function _getNodeMetadata(node: ts.Node, typeChecker: ts.TypeChecker){
 		for(i=0, len= jsDocTags.length; i<len; ++i){
 			let tag= jsDocTags[i];
 			let tagName= tag.tagName.getText();
+			jsDoc.push(tag.getText());
 			let tagText:any;
 			switch(tagName){
 				case 'assert':
