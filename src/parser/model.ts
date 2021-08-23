@@ -54,7 +54,7 @@ export interface PlainObject extends _Node{
 	/** Visible own and inhireted fields with their flags */
 	visibleFields:	Map<string, ts.SymbolFlags>
 	/** inheritance */
-	inherit:		Reference[]
+	inherit:		Reference[]|undefined
 	/** In case of generic: Generic kies */
 	generics: string[] | undefined
 }
@@ -63,18 +63,22 @@ export interface PlainObject extends _Node{
 export interface ObjectLiteral extends Omit<_Node, 'name'>{
 	kind:		ModelKind.OBJECT_LITERAL
 	/** Fields */
-	fields:			Map<string, Field>
+	fields:		Map<string, Field>
+	name:		string|undefined
 }
 
 /** Field */
 export interface Field{
-	input: InputField|undefined
-	output: OutputField|undefined
+	/** rename the field outside the API (when input & output) */
+	alias:	string|undefined
+	input:	InputField|undefined
+	output:	OutputField|undefined
 }
 
 /** Object field */
 export interface OutputField  extends _Node{
 	kind:	ModelKind.OUTPUT_FIELD
+	alias:	string|undefined
 	required:	boolean
 	/** Content type: List or type name */
 	type:		FieldType
@@ -87,6 +91,7 @@ export interface OutputField  extends _Node{
 /** Input field */
 export interface InputField extends _Node{
 	kind:	ModelKind.INPUT_FIELD
+	alias:	string|undefined
 	required:	boolean
 	/** Content type: List or type name */
 	type:		FieldType
