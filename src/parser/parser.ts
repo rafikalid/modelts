@@ -42,6 +42,8 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 	var nodeName: string|undefined;
 	const namelessEntities: NamelessEntity[]= [];
 	const warns: string[]= [];
+	/** Used to generate entity id */
+	var idIt= 0;
 	rootLoop: while(true){
 		// get next item
 		let item= it.next();
@@ -152,10 +154,12 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 				}
 				// Visible fields
 				let cChilds= nodeType.getProperties();
-				let visibleFields:Map<string, ts.SymbolFlags>= new Map();
+				let visibleFields:PlainObject['visibleFields']= new Map();
 				for(let i=0, len= cChilds.length; i<len; ++i){
 					let s= cChilds[i];
-					visibleFields.set(s.name, s.flags);
+					let clName= ((s.valueDeclaration ?? s.declarations?.[0])?.parent as ts.ClassDeclaration).name?.getText();
+					if(clName==null) throw new Error(`unknown classname of inherited field "${nodeName}.${s.name}" at: ${_errorFile(srcFile, node)}`);
+					visibleFields.set(s.name, {flags: s.flags, className: clName});
 				}
 				// Add Entity
 				if(nodeName==null) throw new Error(`Missing entity name at ${_errorFile(srcFile, node)}`);
@@ -174,6 +178,7 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 					entity= {
 						kind:		ModelKind.PLAIN_OBJECT,
 						name:		nodeName,
+						id:			idIt++,
 						jsDoc:		comment,
 						deprecated:	deprecated,
 						fields:		new Map(),
@@ -387,6 +392,7 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 				let enumEntity: Enum= {
 					kind:		ModelKind.ENUM,
 					name:		nodeName,
+					id:			idIt++,
 					deprecated:	deprecated,
 					jsDoc:		comment,
 					members:	[]
@@ -401,6 +407,7 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 				let enumMember: EnumMember= {
 					kind:		ModelKind.ENUM_MEMBER,
 					name:		nodeName,
+					id:			idIt++,
 					value:		typeChecker.getConstantValue(node as ts.EnumMember)!,
 					deprecated:	deprecated,
 					jsDoc:		comment
@@ -435,6 +442,7 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 								let scalarEntity: Scalar= {
 									kind:		ModelKind.SCALAR,
 									name:		fieldName,
+									id:			idIt++,
 									deprecated: deprecated,
 									jsDoc:		comment,
 									parser: {
@@ -455,6 +463,7 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 								let unionNode: Union={
 									kind:		ModelKind.UNION,
 									name:		fieldName,
+									id:			idIt++,
 									deprecated:	deprecated,
 									jsDoc:		comment,
 									types:		[],
@@ -510,6 +519,7 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 				let typeLiteral: ObjectLiteral= {
 					kind:		ModelKind.OBJECT_LITERAL,
 					name:		undefined,
+					id:			idIt++,
 					deprecated:	deprecated,
 					jsDoc:		comment,
 					fields:		new Map()

@@ -39,6 +39,8 @@ export type AllNodes= Node | InputField | OutputField | List | Reference | Param
 export interface _Node{
 	kind:		ModelKind
 	name:		string
+	/** Entity id: used internaly for better algo */
+	id:			number
 	jsDoc:		string|undefined
 	deprecated:	string | undefined
 }
@@ -52,7 +54,7 @@ export interface PlainObject extends _Node{
 	/** Fields */
 	fields:			Map<string, Field>
 	/** Visible own and inhireted fields with their flags */
-	visibleFields:	Map<string, ts.SymbolFlags>
+	visibleFields:	Map<string, {flags: ts.SymbolFlags, className: string}>
 	/** inheritance */
 	inherit:		Reference[]|undefined
 	/** In case of generic: Generic kies */

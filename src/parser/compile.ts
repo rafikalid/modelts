@@ -28,14 +28,14 @@ export function generateModel(filePath: string, fileContent: string, compilerOpt
 		console.log('COMPILE PATTERN>>', p);
 		const pArr= p.slice(1, p.length-1).split(',').map(e=> join(relativeDirname, e.trim()) );
 		var root= ParseModelFrom(pArr, compilerOptions);
-		// Format result
+		console.log("===ROOT===\n", printTree(root, '  '));
+		// Create graphql object
+		console.log('INSERT DATA>>')
 		
 		// Serialize AST
 		// TODO
 		// ModelMap.set(p, serializeAST(root, ts.factory, importsMapper, pretty));
 		// ModelRoots.set(p, root);
-		console.log('===ROOT===');
-		console.log(printTree(root, '  '));
 	});
 
 

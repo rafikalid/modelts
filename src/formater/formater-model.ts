@@ -1,7 +1,8 @@
-import { InputField, ModelKind, OutputField, _Node } from "./model";
+import { BasicScalar, Enum, InputField, ModelKind, OutputField, Scalar, Union, _Node } from "../parser/model";
 
 /** Formated node */
-// export type FormatedNode= FormatedObject;
+export type FormatedInputNode=	FormatedInputObject | Enum | Union | Scalar | BasicScalar;
+export type FormatedOutputNode=	FormatedOutputObject | Enum | Union | Scalar | BasicScalar;
 
 
 /** Output Plain object */
