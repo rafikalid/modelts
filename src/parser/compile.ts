@@ -30,7 +30,7 @@ export function generateModel(filePath: string, fileContent: string, compilerOpt
 		info('COMPILE PATTERN>>', p);
 		const pArr= p.slice(1, p.length-1).split(',').map(e=> join(relativeDirname, e.trim()) );
 		var root= ParseModelFrom(pArr, compilerOptions);
-		// console.log("===ROOT===\n", printTree(root, "\t"));
+		console.log("===ROOT===\n", printTree(root, "\t"));
 		// Create graphql object
 		info('>> FORMAT DATA');
 		var formated= format(root);

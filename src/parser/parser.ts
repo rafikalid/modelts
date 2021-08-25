@@ -240,12 +240,14 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 							kind:		ModelKind.OUTPUT_FIELD,
 							alias:		fieldAlias,
 							name:		nodeName,
+							id:			idIt++,
 							deprecated:	deprecated,
 							jsDoc:		comment,
 							required:	!propertyNode.questionToken,
 							// type:		undefined,
 							param:		undefined,
-							method:		undefined
+							method:		undefined,
+							fileName:	srcFile.fileName
 						} as OutputField;
 						pField.output= f;
 					} else {
@@ -263,13 +265,15 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 						f= {
 							kind:			ModelKind.INPUT_FIELD,
 							name:			nodeName,
+							id:				idIt++,
 							alias:			fieldAlias,
 							deprecated:		deprecated,
 							jsDoc:			comment,
 							required:		!propertyNode.questionToken,
 							asserts:		_compileAsserts(asserts, undefined, srcFile),
 							defaultValue:	defaultValue,
-							validate:		undefined
+							validate:		undefined,
+							fileName:		srcFile.fileName
 						} as InputField;
 						pField.input= f;
 					} else {
@@ -323,12 +327,14 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 							kind:			ModelKind.INPUT_FIELD,
 							alias:			fieldAlias,
 							name:			nodeName,
+							id:				idIt++,
 							deprecated:		deprecated,
 							jsDoc:			comment,
 							required:		!(node as ts.PropertyDeclaration).questionToken,
 							asserts:		_compileAsserts(asserts, undefined, srcFile),
 							defaultValue:	defaultValue,
-							validate:		method
+							validate:		method,
+							fileName: 		srcFile.fileName
 						} as InputField;
 						field.input= inpOut;
 					} else {
@@ -345,13 +351,15 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 						inpOut={
 							kind:		ModelKind.OUTPUT_FIELD,
 							name:		nodeName,
+							id:			idIt++,
 							alias:		fieldAlias,
 							deprecated:	deprecated,
 							jsDoc:		comment,
 							required:	!(node as ts.PropertyDeclaration).questionToken,
 							// type:		undefined,
 							param:		undefined,
-							method:		method
+							method:		method,
+							fileName:	srcFile.fileName
 						} as OutputField;
 						field.output= inpOut;
 					} else {
@@ -381,16 +389,20 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 			case ts.SyntaxKind.Parameter:
 				if(pDesc==null ||  pDesc.kind !== ModelKind.OUTPUT_FIELD )
 					throw new Error(`Expected parent as method. Got ${pDesc?ModelKind[pDesc.kind]: 'nothing'} at ${_errorFile(srcFile, node)}\n${node.getText()}`);
-				nodeName= (node as ts.ParameterDeclaration).name?.getText();
+				let paramNode= node as ts.ParameterDeclaration;
+				nodeName= paramNode.name?.getText();
 				let pRef: Param= {
 					kind:		ModelKind.PARAM,
 					name:		nodeName,
+					id:			idIt++,
 					deprecated:	deprecated,
 					jsDoc:		comment,
-				} as Param;
+					type:		undefined,
+					fileName:	srcFile.fileName
+				};
 				pDesc.param= pRef;
 				// Parse param type
-				visitor.push((node as ts.ParameterDeclaration).type, pRef, srcFile);
+				visitor.push(paramNode.type, pRef, srcFile);
 				break;
 			case ts.SyntaxKind.EnumDeclaration:
 				let enumNode= node as ts.EnumDeclaration;
@@ -642,9 +654,11 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 				) continue;
 				let arrTpe: List= {
 					kind:		ModelKind.LIST,
+					id:			idIt++,
 					required:	true,
 					deprecated:	deprecated,
-					jsDoc:		comment
+					jsDoc:		comment,
+					fileName:	srcFile.fileName
 				} as List;
 				if(pDesc.kind===ModelKind.REF)
 					pDesc.params!.push(arrTpe);

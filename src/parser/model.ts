@@ -204,5 +204,5 @@ export interface Reference{
 /** Method parameter */
 export interface Param extends _Node{
 	kind:	ModelKind.PARAM
-	type:	Reference
+	type:	Reference|undefined
 }

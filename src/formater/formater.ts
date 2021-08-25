@@ -146,14 +146,17 @@ export function format(root: Map<string, Node>): FormatReponse {
 	function _resolveType<T extends FieldType|Param>(type: T, field: InputField|OutputField, className: string, inhiretedFrom: string|undefined): T {
 		// Check if field has generic type
 		var p: FieldType|Param= type;
-		while(p.kind!==ModelKind.REF) p= p.type;
+		while(p.kind!==ModelKind.REF){
+			p= p.type!;
+			if(p==null) return type;
+		}
 		if(p.params== null) return type;
 		// Resolve generic reference
 		var q:(FieldType|Param)[]=[];
 		p= type;
 		while(p.kind !== ModelKind.REF){
 			q.push(p);
-			p= p.type;
+			p= p.type!;
 		}
 		var resolvedRef:FieldType|Param= _resolveGeneric(p, field, className, inhiretedFrom);
 		if(q.length!==0){
@@ -167,10 +170,12 @@ export function format(root: Map<string, Node>): FormatReponse {
 	/** Resolve generic type */
 	function _resolveGeneric(ref: Reference, field: InputField|OutputField, className: string, inhiretedFrom: string|undefined): Reference{
 		var refNode= root.get(ref.name);
-		if(refNode==null)
-			throw new Error(`Missing generic entity "${ref.name}" referenced by "${inhiretedFrom??className}.${field.name}" at ${field.fileName}`);
+		if(refNode==null){
+			if(ref.name==='Partial') return _getPartial(ref, field, className, inhiretedFrom);
+			else throw new Error(`Missing generic entity "${ref.name}" referenced by "${inhiretedFrom??className}.${field.name}" at ${ref.fileName}`);
+		}
 		if(refNode.kind!==ModelKind.PLAIN_OBJECT)
-			throw new Error(`Expected PlainObject as reference of generic "${inhiretedFrom??className}.${field.name}". Got "${ModelKind[refNode.kind]}" at ${field.fileName}`)
+			throw new Error(`Expected PlainObject as reference of generic "${inhiretedFrom??className}.${field.name}". Got "${ModelKind[refNode.kind]}" at ${ref.fileName}`)
 		var escapedName= _getGenericEscapedName(ref);
 		if(root.has(escapedName))
 			throw new Error(`Found entity "${escapedName}" witch equals to the escaped name of generic: ${_getGenericName(ref)} at ${ref.fileName}`);
@@ -183,7 +188,7 @@ export function format(root: Map<string, Node>): FormatReponse {
 				escapedName:	escapedName,
 				deprecated:		refNode.deprecated,
 				jsDoc:			`@Generic ${name}${ refNode.jsDoc==null? '': "\n"+refNode.jsDoc }`,
-				fields:			_resolveGenericFields(refNode, ref.params!),
+				fields:			_resolveGenericFields(refNode, ref),
 				fileName:		refNode.fileName,
 				generics:		undefined,
 				id:				refNode.id,
@@ -194,6 +199,51 @@ export function format(root: Map<string, Node>): FormatReponse {
 			resovledGenerics.set(escapedName, gEntity);
 			rootQueue.push([escapedName, gEntity]);
 		}
+		return {
+			kind:		ModelKind.REF,
+			fileName:	ref.fileName,
+			name:		escapedName,
+			params:		undefined
+		}
+	}
+
+	/** Generate partial node */
+	function _getPartial(ref: Reference, field: InputField|OutputField, className: string, inhiretedFrom: string|undefined): Reference{
+		var c: FieldType;
+		if(ref.params==null || ref.params.length!==1 || (c=ref.params[0]).kind!==ModelKind.REF || c.params!=null) throw new Error(`Enexpected Partial expression at "${inhiretedFrom??className}.${field.name}" at ${ref.fileName}`);
+		let partialNode= root.get(c.name);
+		if(partialNode==null) throw new Error(`Missing entity "${c.name}" at "${inhiretedFrom??className}.${field.name}" at ${ref.fileName}`);
+		if(partialNode.kind!==ModelKind.PLAIN_OBJECT) throw new Error(`Expected PlainObject as reference of generic "${inhiretedFrom??className}.${field.name}". Got "${ModelKind[partialNode.kind]}" at ${ref.fileName}`);
+		// Check escaped name
+		var escapedName= _getGenericEscapedName(ref);
+		if(root.has(escapedName))
+			throw new Error(`Found entity "${escapedName}" witch equals to the escaped name of generic: ${_getGenericName(ref)} at ${ref.fileName}`);
+		// Visible fields
+		var visibleFields= new Map();
+		partialNode.visibleFields.forEach(function(f, fname){
+			visibleFields.set(fname, {
+				flags: ts.SymbolFlags.Optional,
+				className: f.className
+			});
+		});
+		// result
+		var name= _getGenericName(ref);
+		var gEntity: PlainObject= {
+			kind:			ModelKind.PLAIN_OBJECT,
+			name:			name,
+			escapedName:	escapedName,
+			deprecated:		partialNode.deprecated,
+			jsDoc:			`@Partial ${name}${ partialNode.jsDoc==null? '': "\n"+partialNode.jsDoc }`,
+			fields:			partialNode.fields,
+			fileName:		partialNode.fileName,
+			generics:		undefined,
+			id:				partialNode.id,
+			inherit:		partialNode.inherit,
+			ownedFields:	partialNode.ownedFields,
+			visibleFields:	visibleFields
+		};
+		rootQueue.push([escapedName, gEntity]);
+		// return reference
 		return {
 			kind:		ModelKind.REF,
 			fileName:	ref.fileName,
@@ -246,9 +296,47 @@ function _getGenericName(ref: FieldType): string{
 	}
 }
 
-function _resolveGenericFields(refNode: PlainObject, params: FieldType[]): Map<string, Field> {
+function _resolveGenericFields(refNode: PlainObject, ref: Reference): Map<string, Field> {
+	var generics= refNode.generics;
+	if(generics==null) return refNode.fields;
 	var fields: Map<string, Field>= new Map();
-	// Map param 
-	//FIXME resolve params
+	var params= ref.params!;
+	if(generics.length!==params.length)
+		throw new Error(`Enexpected params length on ${refNode.name} and ${ref.name} at ${ref.fileName}`);
+	// Map param
+	refNode.fields.forEach(function(field, fieldName){
+		var f: Field={
+			alias:		field.alias,
+			input:		field.input && _resolve(field.input),
+			output:		field.output && _resolve(field.output),
+			className:	field.className,
+			idx:		field.idx
+		};
+		fields.set(fieldName, f);
+	});
 	return fields;
+	/** Resolve */
+	function _resolve<T extends InputField|OutputField|FieldType|Param|undefined>(f: T): T{
+		var r: T;
+		if(f==null) return f;
+		switch(f.kind){
+			case ModelKind.INPUT_FIELD:
+			case ModelKind.LIST:
+			case ModelKind.PARAM:
+				r= {...f, type: _resolve(f.type)};
+				break;
+			case ModelKind.OUTPUT_FIELD:
+				r= {...f, type: _resolve(f.type), param: _resolve(f.param)};
+				break;
+			case ModelKind.REF:
+				let i= generics!.indexOf(f.name);
+				if(i===-1) r= f;
+				else r= params[i] as T;
+				break;
+			default:
+				//@ts-ignore
+				throw new Error(`Enexpected kind: ${ModelKind[f.kind]}`);
+		}
+		return r;
+	}
 }
