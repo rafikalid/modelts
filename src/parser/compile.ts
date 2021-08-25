@@ -4,6 +4,8 @@ import {join, dirname, relative} from "path";
 import { parse as ParseModelFrom } from "./parser";
 import { PACKAGE_NAME } from "@src/config";
 import { printTree } from "@src/utils/console-print";
+import { format } from "@src/formater/formater";
+import { info } from "@src/utils/log";
 
 // import { compileGraphQL } from "@src/graphql/compiler";
 
@@ -25,12 +27,15 @@ export function generateModel(filePath: string, fileContent: string, compilerOpt
 	const importsMapper: Map<string, Map<string, ts.Identifier>>= new Map();
 	const relativeDirname= relative(process.cwd(), dirname(filePath));
 	mappedFiles.patterns.forEach(function(p){
-		console.log('COMPILE PATTERN>>', p);
+		info('COMPILE PATTERN>>', p);
 		const pArr= p.slice(1, p.length-1).split(',').map(e=> join(relativeDirname, e.trim()) );
 		var root= ParseModelFrom(pArr, compilerOptions);
-		console.log("===ROOT===\n", printTree(root, '  '));
+		// console.log("===ROOT===\n", printTree(root, "\t"));
 		// Create graphql object
-		console.log('INSERT DATA>>')
+		info('>> FORMAT DATA');
+		var formated= format(root);
+		console.log("===FORMATED ROOT===\n", printTree(formated, '  '));
+
 		
 		// Serialize AST
 		// TODO

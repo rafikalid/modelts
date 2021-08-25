@@ -43,6 +43,8 @@ export interface _Node{
 	id:			number
 	jsDoc:		string|undefined
 	deprecated:	string | undefined
+	/** Meta data: used for debug */
+	fileName:	string
 }
 
 /** Field possible types (string means reference) */
@@ -51,6 +53,8 @@ export type FieldType= List | Reference
 /** Plain object */
 export interface PlainObject extends _Node{
 	kind:			ModelKind.PLAIN_OBJECT
+	/** Escaped name (useful when generics) */
+	escapedName:	string,
 	/** Fields */
 	fields:			Map<string, Field>
 	/** Visible own and inhireted fields with their flags */
@@ -59,6 +63,8 @@ export interface PlainObject extends _Node{
 	inherit:		Reference[]|undefined
 	/** In case of generic: Generic kies */
 	generics: string[] | undefined
+	/** Fields count: used to generate indexes for owned fields */
+	ownedFields:	number
 }
 
 /** Object literal */
@@ -67,6 +73,8 @@ export interface ObjectLiteral extends Omit<_Node, 'name'>{
 	/** Fields */
 	fields:		Map<string, Field>
 	name:		string|undefined
+	/** Fields count: used to generate indexes for owned fields */
+	ownedFields:	number
 }
 
 /** Field */
@@ -75,6 +83,10 @@ export interface Field{
 	alias:	string|undefined
 	input:	InputField|undefined
 	output:	OutputField|undefined
+	/** Field index insite it's parent object */
+	idx:		number
+	/** Name of parent class */
+	className:	string|undefined
 }
 
 /** Object field */

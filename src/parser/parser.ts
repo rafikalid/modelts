@@ -4,6 +4,7 @@ import ts from "typescript";
 import { AllNodes, AssertOptions, BasicScalar, Enum, EnumMember, InputField, List, MethodDescriptor, ModelKind, Node, ObjectLiteral, OutputField, Param, PlainObject, Reference, Scalar, Union } from "./model";
 import { DEFAULT_SCALARS } from "./types";
 import JSON5 from 'json5';
+import { info, warn } from "@src/utils/log";
 const {parse: parseJSON}= JSON5;
 
 /** Parse files */
@@ -24,13 +25,13 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 	if (files.length === 0)
 		throw new Error(`Model Parser>> No file found for pattern: ${pathPatterns.join(', ')}`);
 	//* Create compiler host
-	console.log('>> Create program...');
+	info('>> Create program...');
 	const pHost= ts.createCompilerHost(compilerOptions, true); 
 	//* Create program
 	const program= ts.createProgram(files, compilerOptions, pHost);
 	const typeChecker= program.getTypeChecker();
 	//* STEP 1: RESOLVE EVERYTHING WITHOUT INHIRETANCE
-	console.log('>> Parsing...');
+	info('>> Parsing...');
 	const visitor= new Visitor<ts.Node, AllNodes>();
 	// var srcFiles= program.getSourceFiles();
 	for(let i=0, len=files.length; i<len; ++i){
@@ -100,7 +101,7 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 						isInput= false;
 						break;
 					case 'alias':
-						fieldAlias= (tag.comment?.[0] as ts.JSDocText).text;
+						fieldAlias= (tag.comment as string|undefined)?.trim().split(/\s/, 1)[0];
 						break;
 				}
 			}
@@ -114,7 +115,7 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 				nodeName= (node as ts.ClassDeclaration).name?.getText();
 				// Check has "export" keyword
 				if(!(node.modifiers?.some(e=> e.kind=== ts.SyntaxKind.ExportKeyword))){
-					console.warn(`PARSER>> Missing "export" keyword on ${nodeType.isClass()? 'class': 'interface'}: ${nodeName} at ${_errorFile(srcFile, node)}`);
+					warn(`PARSER>> Missing "export" keyword on ${nodeType.isClass()? 'class': 'interface'}: ${nodeName} at ${_errorFile(srcFile, node)}`);
 					continue rootLoop;
 				}
 				// Check for heritage clause
@@ -151,6 +152,9 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 							}
 						}
 					}
+					// Add to comment
+					jsDoc.push(...clauses.map(e=> `\n@${e.getText()}`));
+					comment= jsDoc.join("\n");
 				}
 				// Visible fields
 				let cChilds= nodeType.getProperties();
@@ -178,13 +182,16 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 					entity= {
 						kind:		ModelKind.PLAIN_OBJECT,
 						name:		nodeName,
+						escapedName: nodeName,
 						id:			idIt++,
 						jsDoc:		comment,
 						deprecated:	deprecated,
 						fields:		new Map(),
 						inherit:	inherited.length===0? undefined : inherited,
 						generics:	generics,
-						visibleFields: visibleFields
+						visibleFields: visibleFields,
+						fileName:	srcFile.fileName,
+						ownedFields:	0
 					};
 					ROOT.set(nodeName, entity);
 				} else if(entity.kind !== ModelKind.PLAIN_OBJECT){
@@ -207,14 +214,17 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 					pDesc.kind !== ModelKind.PLAIN_OBJECT
 					&& pDesc.kind !== ModelKind.OBJECT_LITERAL
 				) continue;
-				nodeName= (node as ts.PropertyDeclaration).name?.getText();
+				let propertyNode= (node as ts.PropertyDeclaration);
+				nodeName= propertyNode.name?.getText();
 				// Get field
 				let pField= pDesc.fields.get(nodeName);
 				if(pField==null){
 					pField= {
-						alias:	fieldAlias,
-						input:	undefined,
-						output:	undefined
+						alias:		fieldAlias,
+						input:		undefined,
+						output:		undefined,
+						idx:		pDesc.ownedFields++,
+						className:	propertyNode.parent.name?.getText()
 					};
 					pDesc.fields.set(nodeName, pField);
 				} else {
@@ -232,7 +242,7 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 							name:		nodeName,
 							deprecated:	deprecated,
 							jsDoc:		comment,
-							required:	!(node as ts.PropertyDeclaration).questionToken,
+							required:	!propertyNode.questionToken,
 							// type:		undefined,
 							param:		undefined,
 							method:		undefined
@@ -244,7 +254,7 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 						f.alias??= fieldAlias;
 					}
 					// Resolve type
-					visitor.push((node as ts.PropertyDeclaration).type, f, srcFile);
+					visitor.push(propertyNode.type, f, srcFile);
 				}
 				if(isInput!==false){
 					//* Input field
@@ -256,7 +266,7 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 							alias:			fieldAlias,
 							deprecated:		deprecated,
 							jsDoc:			comment,
-							required:		!(node as ts.PropertyDeclaration).questionToken,
+							required:		!propertyNode.questionToken,
 							asserts:		_compileAsserts(asserts, undefined, srcFile),
 							defaultValue:	defaultValue,
 							validate:		undefined
@@ -268,7 +278,7 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 						f.jsDoc??= comment;
 						f.asserts= _compileAsserts(asserts, f.asserts, srcFile)
 					}
-					visitor.push((node as ts.PropertyDeclaration).type, f, srcFile);
+					visitor.push(propertyNode.type, f, srcFile);
 				}
 				break;
 			case ts.SyntaxKind.MethodDeclaration:
@@ -277,14 +287,20 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 					pDesc.kind !== ModelKind.PLAIN_OBJECT
 					// && pDesc.kind !== ModelKind.OBJECT_LITERAL
 				) continue;
-				nodeName= (node as ts.MethodDeclaration).name?.getText();
+				let methodNode= node as ts.MethodDeclaration;
+				let parentNameNode= (methodNode.parent as ts.ClassDeclaration).name?.getText();
+				if(parentNameNode==null)
+					throw new Error(`Expected a class as parent for "${nodeName}" at ${_errorFile(srcFile, node)}`);
+				nodeName= methodNode.name?.getText();
 				// Get field
 				let field= pDesc.fields.get(nodeName);
 				if(field==null){
 					field= {
 						alias:	fieldAlias,
 						input:	undefined,
-						output:	undefined
+						output:	undefined,
+						idx:	pDesc.ownedFields++,
+						className:	parentNameNode
 					};
 					pDesc.fields.set(nodeName, field);
 				} else {
@@ -292,12 +308,9 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 					if(field.alias==null) field.alias= fieldAlias;
 					else if(field.alias!== fieldAlias) throw new Error(`Field ${nodeName} could not have two aliases. got "${field.alias}" and "${fieldAlias}" at ${_errorFile(srcFile, node)}`);
 				}
-				let parentNameNode= (node.parent as ts.ClassDeclaration).name;
-				if(parentNameNode==null)
-					throw new Error(`Expected a class as parent for "${nodeName}" at ${_errorFile(srcFile, node)}`);
 				let method: MethodDescriptor= {
 					fileName:	srcFile.fileName,
-					className:	parentNameNode.getText(),
+					className:	parentNameNode,
 					name:		nodeName,
 					isStatic:	node.modifiers?.some(n=> n.kind===ts.SyntaxKind.StaticKeyword) ?? false
 				};
@@ -384,7 +397,7 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 				nodeName= (node as ts.EnumDeclaration).name?.getText();
 				// Check has "export" keyword
 				if(!(node.modifiers?.some(e=> e.kind=== ts.SyntaxKind.ExportKeyword))){
-					console.warn(`PARSER>> Missing "export" keyword on ENUM: ${nodeName} at ${_errorFile(srcFile, node)}`);
+					warn(`PARSER>> Missing "export" keyword on ENUM: ${nodeName} at ${_errorFile(srcFile, node)}`);
 					continue rootLoop;
 				}
 				// Check for duplicate
@@ -395,7 +408,8 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 					id:			idIt++,
 					deprecated:	deprecated,
 					jsDoc:		comment,
-					members:	[]
+					members:	[],
+					fileName:	srcFile.fileName
 				};
 				ROOT.set(nodeName, enumEntity);
 				visitor.push(node.getChildren(), enumEntity, srcFile);
@@ -410,7 +424,8 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 					id:			idIt++,
 					value:		typeChecker.getConstantValue(node as ts.EnumMember)!,
 					deprecated:	deprecated,
-					jsDoc:		comment
+					jsDoc:		comment,
+					fileName:	srcFile.fileName
 				}
 				pDesc.members.push(enumMember);
 				break;
@@ -450,7 +465,8 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 										className:  nodeName,
 										isStatic:	true,
 										name:		undefined
-									}
+									},
+									fileName:	srcFile.fileName
 								};
 								ROOT.set(fieldName, scalarEntity);
 								break;
@@ -472,7 +488,8 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 										className:	nodeName,
 										isStatic:	true,
 										name:		undefined
-									}
+									},
+									fileName:	srcFile.fileName
 								};
 								ROOT.set(fieldName, unionNode);
 								let unionChilds= unionNode.types;
@@ -522,7 +539,9 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 					id:			idIt++,
 					deprecated:	deprecated,
 					jsDoc:		comment,
-					fields:		new Map()
+					fields:		new Map(),
+					fileName:	srcFile.fileName,
+					ownedFields: 0
 				};
 				let typeRef: Reference= {
 					kind:		ModelKind.REF,
@@ -670,9 +689,16 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 			itemName= `${tmpn}_${itemI}`;
 		}
 		namelessMap.set(tmpn, itemI);
-		item.node.name= itemName;
-		ROOT.set(itemName, item.node);
+		let nNode= item.node;
+		nNode.name= itemName;
+		ROOT.set(itemName, nNode);
 		item.ref.name= itemName;
+		// Set fields class name
+		if(nNode.kind===ModelKind.OBJECT_LITERAL){
+			nNode.fields.forEach(function(field){
+				field.className= itemName;
+			});
+		}
 	}
 	return ROOT;
 }
