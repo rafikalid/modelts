@@ -6,6 +6,7 @@ import { PACKAGE_NAME } from "@src/config";
 import { printTree } from "@src/utils/console-print";
 import { format } from "@src/formater/formater";
 import { info } from "@src/utils/log";
+import { toGraphQL } from "@src/graphql/compiler";
 
 // import { compileGraphQL } from "@src/graphql/compiler";
 
@@ -30,13 +31,13 @@ export function generateModel(filePath: string, fileContent: string, compilerOpt
 		info('COMPILE PATTERN>>', p);
 		const pArr= p.slice(1, p.length-1).split(',').map(e=> join(relativeDirname, e.trim()) );
 		var root= ParseModelFrom(pArr, compilerOptions);
-		console.log("===ROOT===\n", printTree(root, "\t"));
+		// console.log("===ROOT===\n", printTree(root, "\t"));
 		// Create graphql object
 		info('>> FORMAT DATA');
 		var formated= format(root);
-		console.log("===FORMATED ROOT===\n", printTree(formated, '  '));
-
-		
+		// console.log("===FORMATED ROOT===\n", printTree(formated, '  '));
+		info('>> Compile to GraphQL');
+		var graphQl= toGraphQL(formated, factory, pretty);
 		// Serialize AST
 		// TODO
 		// ModelMap.set(p, serializeAST(root, ts.factory, importsMapper, pretty));

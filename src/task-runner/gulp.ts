@@ -11,13 +11,15 @@ export interface GulpOptions{
 }
 /** Adapter for gulp */
 export function createGulpPipe({tsConfig, pretty=true}:GulpOptions){
+	if(typeof tsConfig==='string') tsConfig= parseTsConfig(tsConfig);
+
 	return Through.obj(function(file: Vinyl, _:any, cb: Through.TransformCallback){
 		if(file.extname===".ts"){
 			// generate model
 			var content= generateModel(
 				file.path,
 				file.isBuffer() ? file.contents.toString('utf-8'): readFileSync(file.path, 'utf-8'),
-				typeof tsConfig==='string' ? parseTsConfig(tsConfig) : tsConfig,
+				tsConfig as ts.CompilerOptions,
 				pretty
 			);
 			if(typeof content === 'string'){

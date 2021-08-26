@@ -30,7 +30,12 @@ export enum ModelKind{
 	/** Basic scalar */
 	BASIC_SCALAR,
 	/** Reference */
-	REF
+	REF,
+	/** Formated input object */
+	FORMATED_INPUT_OBJECT,
+	/** Formated input object */
+	FORMATED_OUTPUT_OBJECT
+
 }
 
 export type Node= PlainObject | Enum | Union | Scalar | BasicScalar | ObjectLiteral;
@@ -152,7 +157,7 @@ export interface EnumMember extends _Node{
 export interface Union extends _Node{
 	kind:		ModelKind.UNION
 	/** TODO convert this to references to plain objects */
-	types:		FieldType[]
+	types:		Reference[]
 	parser:		MethodDescriptor
 }
 

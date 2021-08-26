@@ -22,9 +22,20 @@ export function format(root: Map<string, Node>): FormatReponse {
 			case ModelKind.BASIC_SCALAR:
 			case ModelKind.SCALAR:
 			case ModelKind.ENUM:
+				inputMap.set(nodeName, node);
+				outputMap.set(nodeName, node);
+				break;
 			case ModelKind.UNION:
 				inputMap.set(nodeName, node);
 				outputMap.set(nodeName, node);
+				// Resolve types
+				for(let i=0, types= node.types, len= types.length; i<len; ++i){
+					let ref= types[i];
+					if(ref.params!=null){
+						ref= _resolveGeneric(ref, undefined, nodeName, undefined);
+						types[i]= ref;
+					}
+				}
 				break;
 			case ModelKind.PLAIN_OBJECT:
 				// Ignore generic objects
@@ -113,7 +124,7 @@ export function format(root: Map<string, Node>): FormatReponse {
 				if(inputFields.length!==0){
 					// Create object
 					let formatedInputObj: FormatedInputObject={
-						kind:		ModelKind.PLAIN_OBJECT,
+						kind:		ModelKind.FORMATED_INPUT_OBJECT,
 						name:		node.name,
 						escapedName: node.escapedName,
 						id:			node.id,
@@ -125,7 +136,7 @@ export function format(root: Map<string, Node>): FormatReponse {
 				}
 				if(outputFields.length!==0){
 					let formatedOutputObj: FormatedOutputObject= {
-						kind:		ModelKind.PLAIN_OBJECT,
+						kind:		ModelKind.FORMATED_OUTPUT_OBJECT,
 						name:		node.name,
 						escapedName: node.escapedName,
 						id:			node.id,
@@ -168,14 +179,16 @@ export function format(root: Map<string, Node>): FormatReponse {
 		return resolvedRef as T;
 	}
 	/** Resolve generic type */
-	function _resolveGeneric(ref: Reference, field: InputField|OutputField, className: string, inhiretedFrom: string|undefined): Reference{
+	function _resolveGeneric(ref: Reference, field: InputField|OutputField|undefined, className: string, inhiretedFrom: string|undefined): Reference{
 		var refNode= root.get(ref.name);
 		if(refNode==null){
 			if(ref.name==='Partial') return _getPartial(ref, field, className, inhiretedFrom);
-			else throw new Error(`Missing generic entity "${ref.name}" referenced by "${inhiretedFrom??className}.${field.name}" at ${ref.fileName}`);
+			else throw new Error(`Missing generic entity "${ref.name}" referenced by "${inhiretedFrom??className}.${field?.name}" at ${ref.fileName}`);
 		}
 		if(refNode.kind!==ModelKind.PLAIN_OBJECT)
-			throw new Error(`Expected PlainObject as reference of generic "${inhiretedFrom??className}.${field.name}". Got "${ModelKind[refNode.kind]}" at ${ref.fileName}`)
+			throw new Error(`Expected PlainObject as reference of generic "${
+				_getGenericName(ref)
+			}". Got "${ModelKind[refNode.kind]}" at "${inhiretedFrom??className}.${field?.name}" at ${ref.fileName}`);
 		var escapedName= _getGenericEscapedName(ref);
 		if(root.has(escapedName))
 			throw new Error(`Found entity "${escapedName}" witch equals to the escaped name of generic: ${_getGenericName(ref)} at ${ref.fileName}`);
@@ -208,12 +221,12 @@ export function format(root: Map<string, Node>): FormatReponse {
 	}
 
 	/** Generate partial node */
-	function _getPartial(ref: Reference, field: InputField|OutputField, className: string, inhiretedFrom: string|undefined): Reference{
+	function _getPartial(ref: Reference, field: InputField|OutputField|undefined, className: string, inhiretedFrom: string|undefined): Reference{
 		var c: FieldType;
-		if(ref.params==null || ref.params.length!==1 || (c=ref.params[0]).kind!==ModelKind.REF || c.params!=null) throw new Error(`Enexpected Partial expression at "${inhiretedFrom??className}.${field.name}" at ${ref.fileName}`);
+		if(ref.params==null || ref.params.length!==1 || (c=ref.params[0]).kind!==ModelKind.REF || c.params!=null) throw new Error(`Enexpected Partial expression at "${inhiretedFrom??className}.${field?.name}" at ${ref.fileName}`);
 		let partialNode= root.get(c.name);
-		if(partialNode==null) throw new Error(`Missing entity "${c.name}" at "${inhiretedFrom??className}.${field.name}" at ${ref.fileName}`);
-		if(partialNode.kind!==ModelKind.PLAIN_OBJECT) throw new Error(`Expected PlainObject as reference of generic "${inhiretedFrom??className}.${field.name}". Got "${ModelKind[partialNode.kind]}" at ${ref.fileName}`);
+		if(partialNode==null) throw new Error(`Missing entity "${c.name}" at "${inhiretedFrom??className}.${field?.name}" at ${ref.fileName}`);
+		if(partialNode.kind!==ModelKind.PLAIN_OBJECT) throw new Error(`Expected PlainObject as reference of generic "${inhiretedFrom??className}.${field?.name}". Got "${ModelKind[partialNode.kind]}" at ${ref.fileName}`);
 		// Check escaped name
 		var escapedName= _getGenericEscapedName(ref);
 		if(root.has(escapedName))

@@ -7,7 +7,7 @@ export type FormatedOutputNode=	FormatedOutputObject | Enum | Union | Scalar | B
 
 /** Output Plain object */
 export interface FormatedOutputObject extends Omit<_Node, 'fileName'>{
-	kind:		ModelKind.PLAIN_OBJECT
+	kind:		ModelKind.FORMATED_OUTPUT_OBJECT
 	/** Fields */
 	fields:		formatedOutputField[]
 	/** Escaped name */
@@ -16,7 +16,7 @@ export interface FormatedOutputObject extends Omit<_Node, 'fileName'>{
 
 /** Input Plain object */
 export interface FormatedInputObject extends Omit<_Node, 'fileName'>{
-	kind:		ModelKind.PLAIN_OBJECT
+	kind:		ModelKind.FORMATED_INPUT_OBJECT
 	/** Fields */
 	fields:		formatedInputField[]
 	/** Escaped name */
