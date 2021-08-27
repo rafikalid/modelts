@@ -44,8 +44,9 @@ export function format(root: Map<string, Node>): FormatReponse {
 				let inputFields: FormatedInputObject['fields']= [];
 				let outputFields: FormatedOutputObject['fields']= [];
 				//* Inherited classes (used for sorting fields)
-				let inherited: string[]= [];
+				let inherited: string[]|undefined;
 				if(node.inherit!=null){
+					inherited= [];
 					for(let i=0, cl=node.inherit, len=cl.length; i<len; ++i){
 						inherited.push(cl[i].name);
 					}
@@ -76,14 +77,13 @@ export function format(root: Map<string, Node>): FormatReponse {
 					})
 				});
 				//* Sort fields
-				if(inherited.length!=0){
-					resolvedFields.sort(function(a,b){
-						if(a.className===b.className) return a.index - b.index;
-						else if(a.className === null) return 1;
-						else if(b.className === null) return -1;
-						else return inherited.indexOf(b.className) - inherited.indexOf(a.className)
-					});
-				}
+				resolvedFields.sort(function(a,b){
+					if(a.className===b.className) return a.index - b.index;
+					else if(a.className === null) return -1;
+					else if(b.className === null) return 1;
+					else if(inherited == null) return 0;
+					else return inherited.indexOf(b.className) - inherited.indexOf(a.className);
+				});
 				//* Load fields
 				for(let i=0, len= resolvedFields.length; i<len; ++i){
 					let {field: f, inheritedFrom, className, requried: isRequired}= resolvedFields[i];
@@ -94,7 +94,6 @@ export function format(root: Map<string, Node>): FormatReponse {
 							kind:			fin.kind,
 							alias:			f.alias,
 							name:			fin.name,
-							id:				fin.id,
 							deprecated:		fin.deprecated,
 							defaultValue:	fin.defaultValue,
 							jsDoc:			inheritedFrom==null? fin.jsDoc : _sortJsDoc(fin.jsDoc.concat(`@inherit-from ${inheritedFrom}`)),
@@ -110,7 +109,6 @@ export function format(root: Map<string, Node>): FormatReponse {
 							kind:			fout.kind,
 							name:			fout.name,
 							alias:			fout.alias,
-							id:				fout.id,
 							deprecated:		fout.deprecated,
 							jsDoc:			inheritedFrom==null? fout.jsDoc : _sortJsDoc(fout.jsDoc.concat(`@inherit-from ${inheritedFrom}`)),
 							method:			fout.method,
@@ -128,7 +126,6 @@ export function format(root: Map<string, Node>): FormatReponse {
 						kind:		ModelKind.FORMATED_INPUT_OBJECT,
 						name:		node.name,
 						escapedName: node.escapedName,
-						id:			node.id,
 						deprecated:	node.deprecated,
 						jsDoc:		nodeJsDoc,
 						fields:		inputFields
@@ -140,7 +137,6 @@ export function format(root: Map<string, Node>): FormatReponse {
 						kind:		ModelKind.FORMATED_OUTPUT_OBJECT,
 						name:		node.name,
 						escapedName: node.escapedName,
-						id:			node.id,
 						deprecated:	node.deprecated,
 						jsDoc:		nodeJsDoc,
 						fields:		outputFields
@@ -205,7 +201,6 @@ export function format(root: Map<string, Node>): FormatReponse {
 				fields:			_resolveGenericFields(refNode, ref),
 				fileName:		refNode.fileName,
 				generics:		undefined,
-				id:				refNode.id,
 				inherit:		refNode.inherit,
 				ownedFields:	refNode.ownedFields,
 				visibleFields:	refNode.visibleFields
@@ -251,7 +246,6 @@ export function format(root: Map<string, Node>): FormatReponse {
 			fields:			partialNode.fields,
 			fileName:		partialNode.fileName,
 			generics:		undefined,
-			id:				partialNode.id,
 			inherit:		partialNode.inherit,
 			ownedFields:	partialNode.ownedFields,
 			visibleFields:	visibleFields
@@ -273,7 +267,7 @@ function _sortJsDoc(arr: string[]){
 	var arr2= [];
 	for(let i=0, len= arr.length; i<len; ++i){
 		let t= arr[i]?.trim();
-		if(t) arr2.push(t);
+		if(t && arr2.indexOf(t)===-1) arr2.push(t);
 	}
 	return arr2.sort((a, b)=> {
 		if(a.startsWith('@')){

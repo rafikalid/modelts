@@ -45,7 +45,6 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 	const namelessEntities: NamelessEntity[]= [];
 	const warns: string[]= [];
 	/** Used to generate entity id */
-	var idIt= 0;
 	rootLoop: while(true){
 		// get next item
 		let item= it.next();
@@ -182,7 +181,6 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 						kind:		ModelKind.PLAIN_OBJECT,
 						name:		nodeName,
 						escapedName: nodeName,
-						id:			idIt++,
 						jsDoc:		jsDoc,
 						deprecated:	deprecated,
 						fields:		new Map(),
@@ -240,7 +238,6 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 							kind:		ModelKind.OUTPUT_FIELD,
 							alias:		fieldAlias,
 							name:		nodeName,
-							id:			idIt++,
 							deprecated:	deprecated,
 							jsDoc:		jsDoc,
 							required:	!propertyNode.questionToken,
@@ -265,7 +262,6 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 						f= {
 							kind:			ModelKind.INPUT_FIELD,
 							name:			nodeName,
-							id:				idIt++,
 							alias:			fieldAlias,
 							deprecated:		deprecated,
 							jsDoc:			jsDoc,
@@ -327,7 +323,6 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 							kind:			ModelKind.INPUT_FIELD,
 							alias:			fieldAlias,
 							name:			nodeName,
-							id:				idIt++,
 							deprecated:		deprecated,
 							jsDoc:			jsDoc,
 							required:		!(node as ts.PropertyDeclaration).questionToken,
@@ -351,7 +346,6 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 						inpOut={
 							kind:		ModelKind.OUTPUT_FIELD,
 							name:		nodeName,
-							id:			idIt++,
 							alias:		fieldAlias,
 							deprecated:	deprecated,
 							jsDoc:		jsDoc,
@@ -394,7 +388,6 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 				let pRef: Param= {
 					kind:		ModelKind.PARAM,
 					name:		nodeName,
-					id:			idIt++,
 					deprecated:	deprecated,
 					jsDoc:		jsDoc,
 					type:		undefined,
@@ -417,7 +410,6 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 				let enumEntity: Enum= {
 					kind:		ModelKind.ENUM,
 					name:		nodeName,
-					id:			idIt++,
 					deprecated:	deprecated,
 					jsDoc:		jsDoc,
 					members:	[],
@@ -433,7 +425,6 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 				let enumMember: EnumMember= {
 					kind:		ModelKind.ENUM_MEMBER,
 					name:		nodeName,
-					id:			idIt++,
 					value:		typeChecker.getConstantValue(node as ts.EnumMember)!,
 					deprecated:	deprecated,
 					jsDoc:		jsDoc,
@@ -469,7 +460,6 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 								let scalarEntity: Scalar= {
 									kind:		ModelKind.SCALAR,
 									name:		fieldName,
-									id:			idIt++,
 									deprecated: deprecated,
 									jsDoc:		jsDoc,
 									parser: {
@@ -491,7 +481,6 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 								let unionNode: Union={
 									kind:		ModelKind.UNION,
 									name:		fieldName,
-									id:			idIt++,
 									deprecated:	deprecated,
 									jsDoc:		jsDoc,
 									types:		[],
@@ -548,7 +537,6 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 				let typeLiteral: ObjectLiteral= {
 					kind:		ModelKind.OBJECT_LITERAL,
 					name:		undefined,
-					id:			idIt++,
 					deprecated:	deprecated,
 					jsDoc:		jsDoc,
 					fields:		new Map(),
@@ -654,7 +642,6 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 				) continue;
 				let arrTpe: List= {
 					kind:		ModelKind.LIST,
-					id:			idIt++,
 					required:	true,
 					deprecated:	deprecated,
 					jsDoc:		jsDoc,

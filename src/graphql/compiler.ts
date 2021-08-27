@@ -1,9 +1,10 @@
 import { FormatReponse } from "@src/formater/formater";
 import { formatedInputField, FormatedInputNode, FormatedInputObject, formatedOutputField, FormatedOutputNode, FormatedOutputObject } from "@src/formater/formater-model";
-import { FieldType, List, MethodDescriptor, ModelKind, Reference, Union } from "@src/parser/model";
+import { FieldType, InputField, List, MethodDescriptor, ModelKind, Param, Reference, Union } from "@src/parser/model";
 import { GraphQLEnumTypeConfig, GraphQLEnumValueConfig, GraphQLFieldConfig, GraphQLInputFieldConfig, GraphQLInputObjectTypeConfig, GraphQLObjectTypeConfig, GraphQLScalarTypeConfig, GraphQLSchemaConfig } from "graphql";
 import ts from "typescript";
 import {relative} from 'path';
+import { compileAsserts } from "@src/validator/compile-asserts";
 /** Compile Model into Graphql */
 export function toGraphQL(root: FormatReponse, f: ts.NodeFactory, pretty: boolean, targetSrcFilePath: string): GqlCompilerResp{
 	/** Validation schema declarations by the API */
@@ -46,11 +47,15 @@ export function toGraphQL(root: FormatReponse, f: ts.NodeFactory, pretty: boolea
 	if(rootOutput.has('Mutation')) queue.push({entity: rootOutput.get('Mutation')!, isInput: false, index: 0, circles: undefined});
 	if(rootOutput.has('Query')) queue.push({entity: rootOutput.get('Query')!, isInput: false, index: 0, circles: undefined});
 	var queueLen: number;
+	/** Map entities to their variables */
 	const mapEntities: Map<QueueInterface['entity'], ts.Identifier>= new Map();
+	/** Map entities to their validation varaibles */
+	const mapVldEntities: Map<QueueInterface['entity'], ParamItem >= new Map();
 	const PATH: Set<QueueInterface['entity']>= new Set();
 	/** Circle fields from previous iterations */
 	var fieldHasCircle= false;
 	const mapCirlces: CircleEntities[]= [];
+	const mapVldCirlces: CircleEntities[]= [];
 	const namesSet: Set<string>= new Set();
 	try {
 		/** Generate uniquely named entities */
@@ -112,8 +117,38 @@ export function toGraphQL(root: FormatReponse, f: ts.NodeFactory, pretty: boolea
 								gqlObjct, undefined, [_serializeObject(entityDesc)]
 							))
 						);
+						//* Compile input data validation
+						let vfields: ts.Expression[]= [];
+						let vldVar= f.createUniqueName(entityName);
+						let vldFieldsVar= f.createUniqueName(entityName+'_fileds');
+						for(let i=0, fields= entity.fields, len= fields.length; i<len; ++i){
+							let fld= fields[i];
+							if(circles.indexOf(fld)===-1){
+								let f= _compileValidateFields(entity as FormatedInputObject, fields[i] as formatedInputField)
+								if(f!=null) vfields.push(f);
+							}
+						}
+						mapVldEntities.set(entity, {var: vldVar, len: vfields.length});
+						mapVldCirlces.push({entity, varname: vldFieldsVar, circles});
+						// add object definition
+						validationDeclarations.push(
+							// Fields
+							f.createVariableDeclaration(
+								vldFieldsVar, undefined,
+								f.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword),
+								f.createArrayLiteralExpression(vfields, pretty)
+							),
+							// Add object definition
+							f.createVariableDeclaration( vldVar, undefined,
+								f.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword),
+								_serializeObject({
+									kind:	ModelKind.PLAIN_OBJECT,
+									fields:	vldFieldsVar
+								})
+							)
+						);
 					} else {
-						// Object without any circles
+						//*  Object without any circles
 						let expFields: Record<string, ts.Expression>= {};
 						for(let i=0, fields= entity.fields, len= fields.length; i<len; ++i){
 							let field= fields[i];
@@ -130,6 +165,28 @@ export function toGraphQL(root: FormatReponse, f: ts.NodeFactory, pretty: boolea
 								gqlObjct, undefined, [_serializeObject(entityDesc)]
 							))
 						);
+						//* Compile input data validation
+						if(isInput){
+							let vfields: ts.Expression[]= [];
+							for(let i=0, fields= entity.fields, len= fields.length; i<len; ++i){
+								let f= _compileValidateFields(entity as FormatedInputObject, fields[i] as formatedInputField)
+								if(f!=null) vfields.push(f);
+							}
+							// add object definition
+							if(vfields.length){
+								let vldVar= f.createUniqueName(entityName);
+								mapVldEntities.set(entity, {var: vldVar, len: vfields.length});
+								validationDeclarations.push(
+									f.createVariableDeclaration( vldVar, undefined,
+										f.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword),
+										_serializeObject({
+											kind:	ModelKind.PLAIN_OBJECT,
+											fields:	f.createArrayLiteralExpression(vfields, pretty)
+										})
+									)
+								);
+							}
+						}
 					}
 					break;
 				case ModelKind.UNION:
@@ -440,6 +497,25 @@ export function toGraphQL(root: FormatReponse, f: ts.NodeFactory, pretty: boolea
 				let n:never= entity;
 		}
 	}
+	//* Resolve validation circles
+	for(let i=0, len= mapVldCirlces.length; i<len; ++i){
+		let {entity, varname, circles}= mapVldCirlces[i];
+		let desc= mapVldEntities.get(entity)!;
+		if(desc==null) throw new Error(`Enexpected missing var for entity validation for: ${entity.name}`);
+		for(let j=0, jlen= circles.length; j<jlen; ++j){
+			let field= circles[j] as formatedInputField;
+			let vField= _compileValidateFields(entity as FormatedInputObject, field);
+			if(vField!=null){
+				++desc.len;
+				statmentsBlock.push(
+					f.createExpressionStatement(f.createCallExpression(
+						f.createPropertyAccessExpression( varname, f.createIdentifier("push")),
+						undefined, [ vField ]
+					))
+				);
+			}
+		}
+	}
 	//* Add return statement
 	var gqlSchema: {[k in keyof GraphQLSchemaConfig]: ts.Identifier}= {};
 	// Query
@@ -555,15 +631,17 @@ export function toGraphQL(root: FormatReponse, f: ts.NodeFactory, pretty: boolea
 				obj.args= _serializeObject(param);
 			}
 			if(field.method!=null){
-				obj.resolve= _resolveAsAny( _getMethodCall(field.method) );
+				obj.resolve= _wrapResolver( _getMethodCall(field.method), field.param);
 			} else if(field.alias!=null){
-				obj.resolve= f.createFunctionExpression(undefined, undefined, undefined, undefined, [
-					f.createParameterDeclaration(undefined, undefined, undefined, 'parent', undefined, f.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword), undefined)
-				], undefined, f.createBlock([
-					f.createReturnStatement(
-						f.createPropertyAccessExpression( f.createIdentifier("parent"), f.createIdentifier(field.name))
-					)
-				], pretty));
+				obj.resolve= _wrapResolver(
+					f.createFunctionExpression(undefined, undefined, undefined, undefined, [
+						f.createParameterDeclaration(undefined, undefined, undefined, 'parent', undefined, f.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword), undefined)
+					], undefined, f.createBlock([
+						f.createReturnStatement(
+							f.createPropertyAccessExpression( f.createIdentifier("parent"), f.createIdentifier(field.name))
+						)
+					], pretty))
+				);
 			}
 			return _serializeObject(obj);
 		}
@@ -628,15 +706,74 @@ export function toGraphQL(root: FormatReponse, f: ts.NodeFactory, pretty: boolea
 		namesSet.add(entityName);
 		return entityName;
 	}
-	/** Resolver as any */
-	function _resolveAsAny(body: ts.PropertyAccessExpression){
+	/** Compile validation fields */
+	type compileTargetTypes= formatedInputField|List|Reference;
+	function _compileValidateFields(entity: FormatedInputObject, field: formatedInputField): ts.Expression|undefined{
+		if(field.asserts!=null || field.validate!=null){
+			// Wrappers (list, required)
+			var fieldProperties: ts.ObjectLiteralElementLike[]= [
+				f.createPropertyAssignment('kind', f.createNumericLiteral(ModelKind.INPUT_FIELD)),
+				f.createPropertyAssignment('name', f.createStringLiteral(field.name))
+			];
+			// Input
+			if(field.validate!=null)
+				fieldProperties.push(f.createPropertyAssignment('input', _getMethodCall(field.validate)));
+			// Asserts
+			let assertTs: ts.MethodDeclaration | undefined;
+			if(field.asserts!=null && (assertTs= compileAsserts(`${entity.name}.${field.name}`, field.asserts, field.type, f, pretty))!= null)
+				fieldProperties.push(assertTs);
+			// Lists
+			let child: compileTargetTypes= field.type;
+			var parentProperties= fieldProperties;
+			while(child.kind=== ModelKind.LIST){
+				let properties: ts.ObjectLiteralElementLike[]= [
+					f.createPropertyAssignment('kind', f.createNumericLiteral(ModelKind.LIST))
+				];
+				if(child.required) properties.push(f.createPropertyAssignment('required', f.createTrue()))
+				parentProperties.push(
+					f.createPropertyAssignment('type', f.createObjectLiteralExpression(properties, pretty))
+				);
+				// Next
+				parentProperties= properties;
+				child= child.type;
+				if(child==null)
+					throw new Error(`Validation>> Enexpected empty list! at ${entity.name}.${field.name}`);
+			}
+			// Resolve reference
+			let refNode= rootInput.get(child.name);
+			if(refNode==null) throw new Error(`Missing entity: ${child.name}. Found at: ${entity.name}.${field.name}`);
+			let refNodeTs: ts.Expression|undefined= mapVldEntities.get(refNode)?.var;
+			if(refNodeTs!=null){
+				parentProperties?.push(f.createPropertyAssignment('type', refNodeTs));
+			}
+			// return field
+			return f.createObjectLiteralExpression(fieldProperties, pretty);
+		}
+	}
+	/** Generate resolver with validation & input wrapper */
+	function _wrapResolver(resolveCb: ts.Expression, param?: Param | undefined): ts.Expression{
+		//* Resolve input entity
+		let inputEntity: FormatedInputObject|undefined
+		if(param!=null && param.type!=null){
+			inputEntity= rootInput.get(param.type.name) as FormatedInputObject;
+			if(inputEntity.kind!==ModelKind.FORMATED_INPUT_OBJECT)
+				throw new Error(`Expected kind "FORMATED_INPUT_OBJECT", received "${ModelKind[inputEntity.kind]}". ${_printStack()}`)
+		}
+		//* Collect input resolvers & validation
+		var vr: ParamItem
+		if(inputEntity!=null && (vr= mapVldEntities.get(inputEntity)!)!=null && vr.len > 0){
+			resolveCb= f.createCallExpression(inputValidationWrapper, undefined, [vr.var, resolveCb]);
+		}
+		//* Return
 		return f.createAsExpression(
-			body,
-			f.createTypeReferenceNode( GraphQLFieldResolver,[
-				f.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword),
+			resolveCb,
+			f.createTypeReferenceNode(
+				GraphQLFieldResolver,
+				[
 				f.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword),
 				f.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword)
-			])
+				]
+			)
 		);
 	}
 }
@@ -673,4 +810,11 @@ function _relative(from: string, to: string){
 	var c= p.charAt(0);
 	if(c!=='.' && c!=='/') p= './'+p;
 	return p;
+}
+
+interface ParamItem {
+	/** Validation entity variable */
+	var: ts.Identifier,
+	/** Count of validated fields */
+	len: number
 }

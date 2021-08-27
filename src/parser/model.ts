@@ -44,8 +44,6 @@ export type AllNodes= Node | InputField | OutputField | List | Reference | Param
 export interface _Node{
 	kind:		ModelKind
 	name:		string
-	/** Entity id: used internaly for better algo */
-	id:			number
 	jsDoc:		string[]
 	deprecated:	string | undefined
 	/** Meta data: used for debug */
