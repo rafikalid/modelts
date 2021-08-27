@@ -5,6 +5,7 @@ import { AllNodes, AssertOptions, BasicScalar, Enum, EnumMember, InputField, Lis
 import { DEFAULT_SCALARS } from "./types";
 import JSON5 from 'json5';
 import { info, warn } from "@src/utils/log";
+import { _errorFile } from "@src/utils/error";
 const {parse: parseJSON}= JSON5;
 
 /** Parse files */
@@ -737,10 +738,4 @@ function _compileAsserts(asserts: string[], prevAsserts: AssertOptions|undefined
 	}catch(err){
 		throw new Error(`Fail to parse assert arguments at ${srcFile.fileName}\n${asserts.join("\n")}\n${err?.stack}`);
 	}
-}
-
-/** Generate error */
-function _errorFile(srcFile: ts.SourceFile, node: ts.Node){
-	let {line, character}= srcFile.getLineAndCharacterOfPosition(node.getStart());
-	return `${srcFile.fileName}:${line}:${character}`;
 }

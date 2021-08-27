@@ -7,15 +7,16 @@ import { printTree } from "@src/utils/console-print";
 import { format } from "@src/formater/formater";
 import { info } from "@src/utils/log";
 import { toGraphQL } from "@src/graphql/compiler";
+import { _errorFile } from "@src/utils/error";
 
 // import { compileGraphQL } from "@src/graphql/compiler";
 
 
 /** Compile each file */
 export function generateModel(filePath: string, fileContent: string, compilerOptions: ts.CompilerOptions, pretty:boolean):string|undefined{
-	const factory= ts.factory;
+	const f= ts.factory;
 	//* Load source file
-	const srcFile= ts.createSourceFile(filePath, fileContent, compilerOptions.target ?? ts.ScriptTarget.Latest, true);
+	var srcFile= ts.createSourceFile(filePath, fileContent, compilerOptions.target ?? ts.ScriptTarget.Latest, true);
 	//* check for files with "Model.from('glob-path')"
 	const mappedFiles= mapFilesWithModel(srcFile);
 
@@ -23,10 +24,12 @@ export function generateModel(filePath: string, fileContent: string, compilerOpt
 		return;
 	
 	//* Resolve Model for each pattern
-	const ModelMap: Map<string, ts.ObjectLiteralExpression>= new Map();
-	const ModelRoots: Map<string, Map<string, Node>>= new Map();
-	const importsMapper: Map<string, Map<string, ts.Identifier>>= new Map();
 	const relativeDirname= relative(process.cwd(), dirname(filePath));
+	const mapGqlPatternToNode: Map<string, ts.CallExpression>= new Map();
+	const mapFromPatternToNode: Map<string, ts.CallExpression>= new Map();
+	const listImports: ts.Statement[]= [];
+	info(`Compile File>> ${filePath}`);
+	const srcFileDir= dirname(filePath);
 	mappedFiles.patterns.forEach(function(p){
 		info('COMPILE PATTERN>>', p);
 		const pArr= p.slice(1, p.length-1).split(',').map(e=> join(relativeDirname, e.trim()) );
@@ -36,27 +39,52 @@ export function generateModel(filePath: string, fileContent: string, compilerOpt
 		info('>> FORMAT DATA');
 		var formated= format(root);
 		// console.log("===FORMATED ROOT===\n", printTree(formated, '  '));
-		info('>> Compile to GraphQL');
-		var graphQl= toGraphQL(formated, factory, pretty);
-		// Serialize AST
-		// TODO
-		// ModelMap.set(p, serializeAST(root, ts.factory, importsMapper, pretty));
-		// ModelRoots.set(p, root);
+		if(mappedFiles.toGraphqlPatterns.has(p)){
+			info('>> Compile to GraphQL');
+			var {imports, node}= toGraphQL(formated, f, pretty, srcFileDir);
+			// Map data
+			mapGqlPatternToNode.set(p, node);
+			listImports.push(...imports);
+		}
+		if(mappedFiles.fromPatterns.has(p)){
+			throw new Error('Model.from not yeat implemented!');
+		}
 	});
-
-
+	//* Inject imports
+	if(listImports.length){
+		srcFile= f.updateSourceFile(
+			srcFile,
+			listImports.concat(srcFile.statements),
+			false,
+			srcFile.referencedFiles,
+			srcFile.typeReferenceDirectives,
+			srcFile.hasNoDefaultLib,
+			srcFile.libReferenceDirectives
+		);
+	}
+	//* Replace patterns
+	srcFile= ts.transform(srcFile, [function(ctx:ts.TransformationContext): ts.Transformer<ts.Node>{
+		return _createModelInjectTransformer(ctx, srcFile, mappedFiles.ModelVarName, mapGqlPatternToNode, mapFromPatternToNode);
+	}], compilerOptions).transformed[0] as ts.SourceFile;
+	//* Return content
+	info('>> Print file');
+	return ts.createPrinter().printFile(srcFile);
 }
 
 /** filterFilesWithModel response */
 interface FilterFilesWithModelResp{
 	/** Absolute Glob pattern inside: "Model.from(pattern)" */
-	patterns: Set<string>
+	patterns:			Set<string>
+	fromPatterns:		Set<string>
+	toGraphqlPatterns:	Set<string>
 	/** Selected files (has "model.from") */
 	file: ts.SourceFile
 	ModelVarName: Set<string>
 }
 /** Filter files to get those with "Model.from('glob-path')" */
 function mapFilesWithModel(srcFile: ts.SourceFile): FilterFilesWithModelResp{
+	const fromPatterns:Set<string>= new Set();
+	const toGraphqlPatterns:Set<string>= new Set();
 	const foundGlobPatterns:Set<string>= new Set();
 	const ModelVarName:Set<string>= new Set();
 	//* Parse each file
@@ -74,12 +102,17 @@ function mapFilesWithModel(srcFile: ts.SourceFile): FilterFilesWithModelResp{
 			});
 		} else if(ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && ModelVarName.has(node.expression.getFirstToken()!.getText())){
 			let arg;
-			let methodName= node.expression.name.getText();
-			if(methodName==='from' || methodName==='toGraphQL'){
-				if(node.arguments.length===1 && (arg= node.arguments[0]) && ts.isStringLiteral(arg)){
-					foundGlobPatterns.add(arg.getText());
-				} else {
-					throw new Error(`Expect static string as argument to "Model::from" at ${fileName}:${node.getStart()}. Code: ${node.getText()}`);
+			if(node.arguments.length===1 && (arg= node.arguments[0]) && ts.isStringLiteral(arg)){
+				let t= arg.getText();
+				switch(node.expression.name.getText()){
+					case 'from':
+						foundGlobPatterns.add(t);
+						fromPatterns.add(t)
+						break;
+					case 'toGraphQL':
+						foundGlobPatterns.add(t);
+						toGraphqlPatterns.add(t);
+						break;
 				}
 			}
 		} else if(node.getChildCount()){
@@ -89,16 +122,52 @@ function mapFilesWithModel(srcFile: ts.SourceFile): FilterFilesWithModelResp{
 	// found
 	return {
 		patterns:	foundGlobPatterns,
+		fromPatterns,
+		toGraphqlPatterns,
 		file: 		srcFile,
 		ModelVarName: ModelVarName
 	};
 }
 
-/** Relative path */
-function _relative(from: string, to: string){
-	var p= relative(from, to);
-	p= p.replace(/\\/g, '/');
-	var c= p.charAt(0);
-	if(c!=='.' && c!=='/') p= './'+p;
-	return p;
+function _createModelInjectTransformer(
+	ctx: ts.TransformationContext,
+	srcFile: ts.SourceFile,
+	ModelVarName: Set<string>,
+	mapGqlPatternToNode: Map<string, ts.CallExpression>,
+	mapFromPatternToNode: Map<string, ts.CallExpression>
+): ts.Transformer<ts.Node> {
+	const f= ctx.factory;
+	return _visitor;
+	// Visitor
+	function _visitor(node:ts.Node):ts.Node{
+		if(
+			ts.isCallExpression(node)
+			&& ts.isPropertyAccessExpression(node.expression)
+			&& ModelVarName.has(node.expression.getFirstToken()!.getText())
+			&& node.arguments.length === 1
+		){
+			let arg= node.arguments[0].getText();
+			switch(node.expression.name.getText()){
+				case 'from':
+					throw new Error(`Model.from not yeat impelemented!`)
+				// 	node= factory.createNewExpression(
+				// 		factory.createIdentifier(node.expression.getFirstToken()!.getText()),
+				// 		undefined,
+				// 		[ModelMap.get(arg)!]
+				// 	);
+				// 	break;
+				case 'toGraphQL':
+					//ModelRoots
+					let n= mapGqlPatternToNode.get(arg)!;
+					if(n==null)
+						throw new Error(`Enexpected empty result for pattern: ${arg} at ${_errorFile(srcFile, node)}`);
+					node= n;
+					break;
+			}
+		} else {
+			node= ts.visitEachChild(node, _visitor, ctx);
+		}
+		return node;
+	}
 }
+
