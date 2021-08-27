@@ -97,7 +97,7 @@ export function format(root: Map<string, Node>): FormatReponse {
 							id:				fin.id,
 							deprecated:		fin.deprecated,
 							defaultValue:	fin.defaultValue,
-							jsDoc:			inheritedFrom==null? fin.jsDoc : `${fin.jsDoc}\n@inherit-from ${inheritedFrom}`,
+							jsDoc:			inheritedFrom==null? fin.jsDoc : _sortJsDoc(fin.jsDoc.concat(`@inherit-from ${inheritedFrom}`)),
 							required:		isRequired,
 							type:			_resolveType(fin.type, fin, className, inheritedFrom),
 							asserts:		fin.asserts,
@@ -112,7 +112,7 @@ export function format(root: Map<string, Node>): FormatReponse {
 							alias:			fout.alias,
 							id:				fout.id,
 							deprecated:		fout.deprecated,
-							jsDoc:			inheritedFrom==null? fout.jsDoc : `${fout.jsDoc}\n@inherit-from ${inheritedFrom}`,
+							jsDoc:			inheritedFrom==null? fout.jsDoc : _sortJsDoc(fout.jsDoc.concat(`@inherit-from ${inheritedFrom}`)),
 							method:			fout.method,
 							param:			fout.param==null? undefined : _resolveType(fout.param, fout, className, inheritedFrom),
 							required:		isRequired,
@@ -121,6 +121,7 @@ export function format(root: Map<string, Node>): FormatReponse {
 					}
 				}
 				//* Entities
+				let nodeJsDoc= _sortJsDoc(node.jsDoc);
 				if(inputFields.length!==0){
 					// Create object
 					let formatedInputObj: FormatedInputObject={
@@ -129,7 +130,7 @@ export function format(root: Map<string, Node>): FormatReponse {
 						escapedName: node.escapedName,
 						id:			node.id,
 						deprecated:	node.deprecated,
-						jsDoc:		node.jsDoc,
+						jsDoc:		nodeJsDoc,
 						fields:		inputFields
 					};
 					inputMap.set(nodeName, formatedInputObj);
@@ -141,7 +142,7 @@ export function format(root: Map<string, Node>): FormatReponse {
 						escapedName: node.escapedName,
 						id:			node.id,
 						deprecated:	node.deprecated,
-						jsDoc:		node.jsDoc,
+						jsDoc:		nodeJsDoc,
 						fields:		outputFields
 					};
 					outputMap.set(nodeName, formatedOutputObj);
@@ -200,7 +201,7 @@ export function format(root: Map<string, Node>): FormatReponse {
 				name:			name,
 				escapedName:	escapedName,
 				deprecated:		refNode.deprecated,
-				jsDoc:			`@Generic ${name}${ refNode.jsDoc==null? '': "\n"+refNode.jsDoc }`,
+				jsDoc:			_sortJsDoc(refNode.jsDoc.concat(`@Generic ${name}`)),
 				fields:			_resolveGenericFields(refNode, ref),
 				fileName:		refNode.fileName,
 				generics:		undefined,
@@ -246,7 +247,7 @@ export function format(root: Map<string, Node>): FormatReponse {
 			name:			name,
 			escapedName:	escapedName,
 			deprecated:		partialNode.deprecated,
-			jsDoc:			`@Partial ${name}${ partialNode.jsDoc==null? '': "\n"+partialNode.jsDoc }`,
+			jsDoc:			_sortJsDoc(partialNode.jsDoc.concat(`@Partial ${name}`)),
 			fields:			partialNode.fields,
 			fileName:		partialNode.fileName,
 			generics:		undefined,
@@ -264,6 +265,28 @@ export function format(root: Map<string, Node>): FormatReponse {
 			params:		undefined
 		}
 	}
+}
+
+/** Sort jsDoc */
+const sortJsDocKeywords= ['Generic', 'Partial', 'implements', 'extends', 'inherit-from'];
+function _sortJsDoc(arr: string[]){
+	var arr2= [];
+	for(let i=0, len= arr.length; i<len; ++i){
+		let t= arr[i]?.trim();
+		if(t) arr2.push(t);
+	}
+	return arr2.sort((a, b)=> {
+		if(a.startsWith('@')){
+			if(b.startsWith('@')){
+				let i= a.indexOf(' ');
+				let at= i===-1 ? a : a.substr(0, i);
+				i= b.indexOf(' ');
+				let bt= i===-1 ? b : b.substr(0, i);
+				return sortJsDocKeywords.indexOf(at) - sortJsDocKeywords.indexOf(bt);
+			}
+			else return 1;
+		} else return -1;
+	});
 }
 
 

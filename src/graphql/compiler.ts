@@ -88,7 +88,7 @@ export function toGraphQL(root: FormatReponse, f: ts.NodeFactory, pretty: boolea
 						for(let i=0, fields= entity.fields, len= fields.length; i<len; ++i){
 							let field= fields[i];
 							if(circles.indexOf(field)===-1){
-								expFields[field.name]= _compileField(field);
+								expFields[field.alias ?? field.name]= _compileField(field);
 							}
 						}
 						mapCirlces.push({ entity, varname: fieldsVar, circles: circles });
@@ -97,7 +97,7 @@ export function toGraphQL(root: FormatReponse, f: ts.NodeFactory, pretty: boolea
 							name:			entityName,
 							fields:			fieldsVar
 						};
-						if(entity.jsDoc!==null) entityDesc.description= entity.jsDoc;
+						if(entity.jsDoc.length>0) entityDesc.description= entity.jsDoc.join("\n");
 						graphqlDeclarations.push(
 							// Field var
 							f.createVariableDeclaration( fieldsVar, undefined, f.createTypeReferenceNode(
@@ -117,14 +117,14 @@ export function toGraphQL(root: FormatReponse, f: ts.NodeFactory, pretty: boolea
 						let expFields: Record<string, ts.Expression>= {};
 						for(let i=0, fields= entity.fields, len= fields.length; i<len; ++i){
 							let field= fields[i];
-							expFields[field.name]= _compileField(field);
+							expFields[field.alias ?? field.name]= _compileField(field);
 						}
 						// Create obj
 						let entityDesc:{[k in keyof (GraphQLInputObjectTypeConfig|GraphQLObjectTypeConfig<any, any>)]: any}= {
 							name:			entityName,
 							fields:			_serializeObject(expFields)
 						};
-						if(entity.jsDoc!==null) entityDesc.description= entity.jsDoc;
+						if(entity.jsDoc.length>0) entityDesc.description= entity.jsDoc.join("\n");
 						graphqlDeclarations.push(
 							f.createVariableDeclaration(entityVar, undefined, undefined, f.createNewExpression(
 								gqlObjct, undefined, [_serializeObject(entityDesc)]
@@ -190,8 +190,8 @@ export function toGraphQL(root: FormatReponse, f: ts.NodeFactory, pretty: boolea
 							)
 						])
 					];
-					if(entity.jsDoc!=null)
-						unionDesc.push(f.createPropertyAssignment('description', f.createStringLiteral(entity.jsDoc)));
+					if(entity.jsDoc.length>0)
+						unionDesc.push(f.createPropertyAssignment('description', f.createStringLiteral(entity.jsDoc.join("\n"))));
 					graphqlDeclarations.push(
 						// types
 						f.createVariableDeclaration(
@@ -277,15 +277,15 @@ export function toGraphQL(root: FormatReponse, f: ts.NodeFactory, pretty: boolea
 						let obj: {[k in keyof GraphQLEnumValueConfig]: any}= {
 							value:	member.value
 						};
-						if(member.jsDoc)		obj.description= member.jsDoc;
-						if(member.deprecated)	obj.deprecationReason= member.deprecated;
+						if(member.jsDoc.length>0)	obj.description= member.jsDoc.join("\n");
+						if(member.deprecated)		obj.deprecationReason= member.deprecated;
 						enumValues.push(f.createPropertyAssignment(member.name, _serializeObject(obj) ))
 					}
 					let entityDesc: {[k in keyof GraphQLEnumTypeConfig]: any}= {
 						name:	enumName,
 						values:	f.createObjectLiteralExpression(enumValues, pretty)
 					};
-					if(entity.jsDoc) entityDesc.description= entity.jsDoc;
+					if(entity.jsDoc.length>0) entityDesc.description= entity.jsDoc.join("\n");
 					graphqlDeclarations.push(
 						f.createVariableDeclaration(entityVar, undefined, undefined, f.createNewExpression(
 							GraphQLEnumType, undefined, [_serializeObject(entityDesc)]
@@ -302,7 +302,7 @@ export function toGraphQL(root: FormatReponse, f: ts.NodeFactory, pretty: boolea
 						parseValue:		_getMethodCall(entity.parser, 'parse'),
 						serialize:		_getMethodCall(entity.parser, 'serialize')
 					};
-					if(entity.jsDoc) scalardesc.description= entity.jsDoc;
+					if(entity.jsDoc.length>0) scalardesc.description= entity.jsDoc.join("\n");
 					graphqlDeclarations.push(
 						f.createVariableDeclaration(entityVar, undefined, undefined, f.createNewExpression(
 							GraphQLScalarType, undefined, [_serializeObject(scalardesc)]
@@ -415,10 +415,9 @@ export function toGraphQL(root: FormatReponse, f: ts.NodeFactory, pretty: boolea
 			case ModelKind.FORMATED_OUTPUT_OBJECT:
 				for(let j=0, jlen= circles.length; j<jlen; ++j){
 					let field= circles[j] as formatedInputField | formatedOutputField;
-					//TODO convert alias to resolvers instead!
 					statmentsBlock.push(
 						f.createExpressionStatement(f.createBinaryExpression(
-							f.createPropertyAccessExpression(varname, f.createIdentifier(field.alias??field.name)),
+							f.createPropertyAccessExpression(varname, f.createIdentifier(field.alias ?? field.name)),
 							f.createToken(ts.SyntaxKind.EqualsToken),
 							_compileField(field)
 						))
@@ -534,14 +533,14 @@ export function toGraphQL(root: FormatReponse, f: ts.NodeFactory, pretty: boolea
 			};
 			if(field.defaultValue!= null) obj.defaultValue= field.defaultValue;
 			if(field.deprecated!=null) obj.deprecationReason= field.deprecated;
-			if(field.jsDoc!=null) obj.description= field.jsDoc;
+			if(field.jsDoc.length>0) obj.description= field.jsDoc.join("\n");
 			return _serializeObject(obj);
 		} else {
 			let obj: {[k in keyof GraphQLFieldConfig<any,any, any>]: any}= {
 				type:			_compileFieldPart(field.type, false),
 			};
 			if(field.deprecated!=null) obj.deprecationReason= field.deprecated;
-			if(field.jsDoc!=null)	obj.description= field.jsDoc;
+			if(field.jsDoc.length>0)	obj.description= field.jsDoc.join("\n");
 			if(field.param!=null && field.param.type!=null){
 				let ref= field.param.type;
 				let refNode= rootInput.get(ref.name);
@@ -550,20 +549,21 @@ export function toGraphQL(root: FormatReponse, f: ts.NodeFactory, pretty: boolea
 					throw new Error(`Enexpected kind "${ModelKind[refNode.kind]}" of ${field.name}. Expected "FormatedInputObject" at ${_printStack()}`);
 				let param: Record<string, any>= {};
 				for(let i=0, flds= refNode.fields, len= flds.length; i<len; ++i){
-					param[field.alias??field.name]= _compileField(flds[i]);
+					let f= flds[i];
+					param[f.alias ?? f.name]= _compileField(f);
 				}
 				obj.args= _serializeObject(param);
 			}
-			//TODO add validator
 			if(field.method!=null){
-				obj.resolve= f.createAsExpression(
-					_getMethodCall(field.method),
-					f.createTypeReferenceNode( GraphQLFieldResolver,[
-						f.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword),
-						f.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword),
-						f.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword)
-					])
-				);
+				obj.resolve= _resolveAsAny( _getMethodCall(field.method) );
+			} else if(field.alias!=null){
+				obj.resolve= f.createFunctionExpression(undefined, undefined, undefined, undefined, [
+					f.createParameterDeclaration(undefined, undefined, undefined, 'parent', undefined, f.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword), undefined)
+				], undefined, f.createBlock([
+					f.createReturnStatement(
+						f.createPropertyAccessExpression( f.createIdentifier("parent"), f.createIdentifier(field.name))
+					)
+				], pretty));
 			}
 			return _serializeObject(obj);
 		}
@@ -627,6 +627,17 @@ export function toGraphQL(root: FormatReponse, f: ts.NodeFactory, pretty: boolea
 		}
 		namesSet.add(entityName);
 		return entityName;
+	}
+	/** Resolver as any */
+	function _resolveAsAny(body: ts.PropertyAccessExpression){
+		return f.createAsExpression(
+			body,
+			f.createTypeReferenceNode( GraphQLFieldResolver,[
+				f.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword),
+				f.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword),
+				f.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword)
+			])
+		);
 	}
 }
 

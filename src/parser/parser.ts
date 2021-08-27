@@ -58,7 +58,7 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 		let asserts: string[]= [];
 		// Extract JSDoc
 		// let jsDoc= nodeSymbol?.getDocumentationComment(typeChecker).map(e=> e.text) ?? [];
-		let jsDoc=
+		let jsDoc: string[]=
 			nodeSymbol?.getDocumentationComment(typeChecker).map(e=> e.text)
 			?? [(node.getChildren().find(e=>e.kind===ts.SyntaxKind.JSDocComment) as ts.JSDoc)?.comment]
 			?? [];
@@ -107,7 +107,6 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 				}
 			}
 		}
-		let comment= jsDoc.join("\n").trim() || undefined;
 		// Switch type
 		switch(node.kind){
 			case ts.SyntaxKind.InterfaceDeclaration:
@@ -155,7 +154,6 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 					}
 					// Add to comment
 					jsDoc.push(...clauses.map(e=> `\n@${e.getText()}`));
-					comment= jsDoc.join("\n");
 				}
 				// Visible fields
 				let cChilds= nodeType.getProperties();
@@ -185,7 +183,7 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 						name:		nodeName,
 						escapedName: nodeName,
 						id:			idIt++,
-						jsDoc:		comment,
+						jsDoc:		jsDoc,
 						deprecated:	deprecated,
 						fields:		new Map(),
 						inherit:	inherited.length===0? undefined : inherited,
@@ -199,11 +197,12 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 					throw new Error(`Entities with different types and same name "${nodeName}". last one at ${_errorFile(srcFile, node)}`);
 				} else {
 					if(inherited.length) (entity.inherit ??=[]).push(...inherited);
-					entity.jsDoc ??= comment;
 					entity.deprecated??= deprecated;
 					visibleFields.forEach((v, k)=> {
 						entity.visibleFields.set(k, v);
 					});
+					// JsDoc
+					entity.jsDoc.push(...jsDoc);
 				}
 				// Go through properties
 				visitor.push(classNode.members, entity, srcFile, isInput);
@@ -243,7 +242,7 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 							name:		nodeName,
 							id:			idIt++,
 							deprecated:	deprecated,
-							jsDoc:		comment,
+							jsDoc:		jsDoc,
 							required:	!propertyNode.questionToken,
 							// type:		undefined,
 							param:		undefined,
@@ -253,7 +252,7 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 						pField.output= f;
 					} else {
 						f.deprecated??= deprecated;
-						f.jsDoc??= comment;
+						f.jsDoc.push(...jsDoc);
 						f.alias??= fieldAlias;
 					}
 					// Resolve type
@@ -269,7 +268,7 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 							id:				idIt++,
 							alias:			fieldAlias,
 							deprecated:		deprecated,
-							jsDoc:			comment,
+							jsDoc:			jsDoc,
 							required:		!propertyNode.questionToken,
 							asserts:		_compileAsserts(asserts, undefined, srcFile),
 							defaultValue:	defaultValue,
@@ -280,7 +279,7 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 					} else {
 						f.deprecated ??= deprecated;
 						f.alias??= fieldAlias;
-						f.jsDoc??= comment;
+						f.jsDoc.push(...jsDoc);
 						f.asserts= _compileAsserts(asserts, f.asserts, srcFile)
 					}
 					visitor.push(propertyNode.type, f, srcFile);
@@ -330,7 +329,7 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 							name:			nodeName,
 							id:				idIt++,
 							deprecated:		deprecated,
-							jsDoc:			comment,
+							jsDoc:			jsDoc,
 							required:		!(node as ts.PropertyDeclaration).questionToken,
 							asserts:		_compileAsserts(asserts, undefined, srcFile),
 							defaultValue:	defaultValue,
@@ -340,7 +339,7 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 						field.input= inpOut;
 					} else {
 						inpOut.deprecated ??= deprecated;
-						inpOut.jsDoc??= comment;
+						inpOut.jsDoc.push(...jsDoc);
 						inpOut.asserts= _compileAsserts(asserts, inpOut.asserts, srcFile);
 						inpOut.validate= method;
 						inpOut.alias??= fieldAlias;
@@ -355,7 +354,7 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 							id:			idIt++,
 							alias:		fieldAlias,
 							deprecated:	deprecated,
-							jsDoc:		comment,
+							jsDoc:		jsDoc,
 							required:	!(node as ts.PropertyDeclaration).questionToken,
 							// type:		undefined,
 							param:		undefined,
@@ -365,7 +364,7 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 						field.output= inpOut;
 					} else {
 						inpOut.deprecated??= deprecated;
-						inpOut.jsDoc??= comment;
+						inpOut.jsDoc.push(...jsDoc);
 						inpOut.method= method;
 						inpOut.alias??= fieldAlias;
 					}
@@ -397,7 +396,7 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 					name:		nodeName,
 					id:			idIt++,
 					deprecated:	deprecated,
-					jsDoc:		comment,
+					jsDoc:		jsDoc,
 					type:		undefined,
 					fileName:	srcFile.fileName
 				};
@@ -420,7 +419,7 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 					name:		nodeName,
 					id:			idIt++,
 					deprecated:	deprecated,
-					jsDoc:		comment,
+					jsDoc:		jsDoc,
 					members:	[],
 					fileName:	srcFile.fileName
 				};
@@ -437,7 +436,7 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 					id:			idIt++,
 					value:		typeChecker.getConstantValue(node as ts.EnumMember)!,
 					deprecated:	deprecated,
-					jsDoc:		comment,
+					jsDoc:		jsDoc,
 					fileName:	srcFile.fileName
 				}
 				pDesc.members.push(enumMember);
@@ -472,7 +471,7 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 									name:		fieldName,
 									id:			idIt++,
 									deprecated: deprecated,
-									jsDoc:		comment,
+									jsDoc:		jsDoc,
 									parser: {
 										fileName:	srcFile.fileName,
 										className:  nodeName,
@@ -494,7 +493,7 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 									name:		fieldName,
 									id:			idIt++,
 									deprecated:	deprecated,
-									jsDoc:		comment,
+									jsDoc:		jsDoc,
 									types:		[],
 									parser: {
 										fileName:	srcFile.fileName,
@@ -551,7 +550,7 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 					name:		undefined,
 					id:			idIt++,
 					deprecated:	deprecated,
-					jsDoc:		comment,
+					jsDoc:		jsDoc,
 					fields:		new Map(),
 					fileName:	srcFile.fileName,
 					ownedFields: 0
@@ -658,7 +657,7 @@ export function parse(pathPatterns:string[], compilerOptions: ts.CompilerOptions
 					id:			idIt++,
 					required:	true,
 					deprecated:	deprecated,
-					jsDoc:		comment,
+					jsDoc:		jsDoc,
 					fileName:	srcFile.fileName
 				} as List;
 				if(pDesc.kind===ModelKind.REF)

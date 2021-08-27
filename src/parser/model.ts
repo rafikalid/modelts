@@ -46,7 +46,7 @@ export interface _Node{
 	name:		string
 	/** Entity id: used internaly for better algo */
 	id:			number
-	jsDoc:		string|undefined
+	jsDoc:		string[]
 	deprecated:	string | undefined
 	/** Meta data: used for debug */
 	fileName:	string
