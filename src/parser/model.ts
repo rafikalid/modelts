@@ -1,9 +1,9 @@
 //* AST Parser
 
-import ts from "typescript";
+import ts from 'typescript';
 
 /** Kinds */
-export enum ModelKind{
+export enum ModelKind {
 	/** Plain object */
 	PLAIN_OBJECT,
 	/** Object literal */
@@ -31,181 +31,196 @@ export enum ModelKind{
 	BASIC_SCALAR,
 	/** Reference */
 	REF,
-	/** Formated input object */
-	FORMATED_INPUT_OBJECT,
-	/** Formated input object */
-	FORMATED_OUTPUT_OBJECT
-
+	/** Formatted input object */
+	FORMATTED_INPUT_OBJECT,
+	/** Formatted input object */
+	FORMATTED_OUTPUT_OBJECT,
 }
 
-export type Node= PlainObject | Enum | Union | Scalar | BasicScalar | ObjectLiteral;
-export type AllNodes= Node | InputField | OutputField | List | Reference | Param;
+export type Node =
+	| PlainObject
+	| Enum
+	| Union
+	| Scalar
+	| BasicScalar
+	| ObjectLiteral;
+export type AllNodes =
+	| Node
+	| InputField
+	| OutputField
+	| List
+	| Reference
+	| Param;
 
-export interface _Node{
-	kind:		ModelKind
-	name:		string
-	jsDoc:		string[]
-	deprecated:	string | undefined
+export interface _Node {
+	kind: ModelKind;
+	name: string;
+	jsDoc: string[];
+	deprecated: string | undefined;
 	/** Meta data: used for debug */
-	fileName:	string
+	fileName: string;
 }
 
 /** Field possible types (string means reference) */
-export type FieldType= List | Reference
+export type FieldType = List | Reference;
 
 /** Plain object */
-export interface PlainObject extends _Node{
-	kind:			ModelKind.PLAIN_OBJECT
+export interface PlainObject extends _Node {
+	kind: ModelKind.PLAIN_OBJECT;
 	/** Escaped name (useful when generics) */
-	escapedName:	string,
+	escapedName: string;
 	/** Fields */
-	fields:			Map<string, Field>
-	/** Visible own and inhireted fields with their flags */
-	visibleFields:	Map<string, {flags: ts.SymbolFlags, className: string}>
+	fields: Map<string, Field>;
+	/** Visible own and inherited fields with their flags */
+	visibleFields: Map<string, { flags: ts.SymbolFlags; className: string }>;
 	/** inheritance */
-	inherit:		Reference[]|undefined
-	/** In case of generic: Generic kies */
-	generics: string[] | undefined
+	inherit: Reference[] | undefined;
+	/** In case of generic: Generic keys */
+	generics: string[] | undefined;
 	/** Fields count: used to generate indexes for owned fields */
-	ownedFields:	number
+	ownedFields: number;
 }
 
 /** Object literal */
-export interface ObjectLiteral extends Omit<_Node, 'name'>{
-	kind:		ModelKind.OBJECT_LITERAL
+export interface ObjectLiteral extends Omit<_Node, 'name'> {
+	kind: ModelKind.OBJECT_LITERAL;
 	/** Fields */
-	fields:		Map<string, Field>
-	name:		string|undefined
+	fields: Map<string, Field>;
+	name: string | undefined;
 	/** Fields count: used to generate indexes for owned fields */
-	ownedFields:	number
+	ownedFields: number;
 }
 
 /** Field */
-export interface Field{
+export interface Field {
 	/** rename the field outside the API (when input & output) */
-	alias:	string|undefined
-	input:	InputField|undefined
-	output:	OutputField|undefined
-	/** Field index insite it's parent object */
-	idx:		number
+	alias: string | undefined;
+	input: InputField | undefined;
+	output: OutputField | undefined;
+	/** Field index inside it's parent object */
+	idx: number;
 	/** Name of parent class */
-	className:	string|undefined
+	className: string | undefined;
 }
 
 /** Object field */
-export interface OutputField  extends _Node{
-	kind:	ModelKind.OUTPUT_FIELD
-	alias:	string|undefined
-	required:	boolean
+export interface OutputField extends _Node {
+	kind: ModelKind.OUTPUT_FIELD;
+	alias: string | undefined;
+	required: boolean;
 	/** Content type: List or type name */
-	type:		FieldType
+	type: FieldType;
 	/** Resolver method */
-	method:		MethodDescriptor|undefined
+	method: MethodDescriptor | undefined;
 	/** Method main parameter */
-	param:		Param|undefined // Param is a reference, could not be array or any else.
+	param: Param | undefined; // Param is a reference, could not be array or any else.
 }
 
 /** Input field */
-export interface InputField extends _Node{
-	kind:	ModelKind.INPUT_FIELD
-	alias:	string|undefined
-	required:	boolean
+export interface InputField extends _Node {
+	kind: ModelKind.INPUT_FIELD;
+	alias: string | undefined;
+	required: boolean;
 	/** Content type: List or type name */
-	type:		FieldType
+	type: FieldType;
 	/** Default value */
-	defaultValue: any
+	defaultValue: any;
 	/** Input Assert */
-	asserts:	AssertOptions | undefined
+	asserts: AssertOptions | undefined;
 	/** Input validator */
-	validate:	MethodDescriptor|undefined
+	validate: MethodDescriptor | undefined;
 }
 
 /** Method descriptor */
-export interface MethodDescriptor{
+export interface MethodDescriptor {
 	/** File name */
-	fileName:	string
+	fileName: string;
 	/** class name */
-	className:	string
+	className: string;
 	/** Field name */
-	name:		string|undefined
+	name: string | undefined;
 	/** is prototype or static method */
-	isStatic:	boolean
+	isStatic: boolean;
 }
 
 /** List */
-export interface List extends Omit<_Node, 'name'>{
-	kind:		ModelKind.LIST
-	required:	boolean
-	type:		FieldType
+export interface List extends Omit<_Node, 'name'> {
+	kind: ModelKind.LIST;
+	required: boolean;
+	type: FieldType;
 }
 
 /** ENUM */
-export interface Enum extends _Node{
-	kind:		ModelKind.ENUM
-	members:	EnumMember[]
+export interface Enum extends _Node {
+	kind: ModelKind.ENUM;
+	members: EnumMember[];
 }
 
 /** ENUM member */
-export interface EnumMember extends _Node{
-	kind:		ModelKind.ENUM_MEMBER
-	value:		string|number
+export interface EnumMember extends _Node {
+	kind: ModelKind.ENUM_MEMBER;
+	value: string | number;
 }
 
 /** UNION */
-export interface Union extends _Node{
-	kind:		ModelKind.UNION
+export interface Union extends _Node {
+	kind: ModelKind.UNION;
 	/** TODO convert this to references to plain objects */
-	types:		Reference[]
-	parser:		MethodDescriptor
+	types: Reference[];
+	parser: MethodDescriptor;
 }
 
 /** Assert options */
-export interface AssertOptions{
+export interface AssertOptions {
 	/** Min value, arr.length or string.length */
-	min?:		number
+	min?: number;
 	/** Max value, arr.length or string.length */
-	max?:		number
+	max?: number;
 	/** less than value, arr.length or string.length */
-	lt?:		number
+	lt?: number;
 	/** greater than value, arr.length or string.length */
-	gt?:		number
+	gt?: number;
 	/** less than or equals value, arr.length or string.length */
-	lte?:		number
+	lte?: number;
 	/** greater than or equals value, arr.length or string.length */
-	gte?:		number
+	gte?: number;
 	/** Value equals */
-	eq?:		number|string
+	eq?: number | string;
 	/** Value not equals */
-	ne?:		number|string
+	ne?: number | string;
 	/** arr.length or string.length */
-	length?:	number
+	length?: number;
 	/** Regular expression */
-	regex?:		RegExp
+	regex?: RegExp;
 }
 
 /** Scalar definition */
 export interface Scalar extends _Node {
-	kind:	ModelKind.SCALAR
-	parser:	MethodDescriptor
+	kind: ModelKind.SCALAR;
+	parser: MethodDescriptor;
 }
 /** Basic scalar */
 export interface BasicScalar {
-	kind:	ModelKind.BASIC_SCALAR
-	name:	string
+	kind: ModelKind.BASIC_SCALAR;
+	name: string;
 }
 
-/** Generic reference or operation: Exmaple: Page<User>, Partial<Booking> */
-export interface Reference{
-	kind:	ModelKind.REF
-	name: string
-	/** source file name. Used for debuger */
-	fileName: string
+/** Generic reference or operation: Example: Page<User>, Partial<Booking> */
+export interface Reference {
+	kind: ModelKind.REF;
+	name: string;
+	/** source file name. Used for debugger */
+	fileName: string;
 	/** Params in case of generic type */
-	params: FieldType[] | undefined
+	params: FieldType[] | undefined;
+	/** Visible own and inherited fields with their flags */
+	visibleFields:
+		| Map<string, { flags: ts.SymbolFlags; className: string }>
+		| undefined;
 }
 
 /** Method parameter */
-export interface Param extends _Node{
-	kind:	ModelKind.PARAM
-	type:	Reference|undefined
+export interface Param extends _Node {
+	kind: ModelKind.PARAM;
+	type: Reference | undefined;
 }
