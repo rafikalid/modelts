@@ -141,6 +141,8 @@ export interface MethodDescriptor {
 	name: string | undefined;
 	/** is prototype or static method */
 	isStatic: boolean;
+	/** Is target a class */
+	isClass: boolean;
 }
 
 /** List */
@@ -208,14 +210,25 @@ export interface BasicScalar {
 /** Generic reference or operation: Example: Page<User>, Partial<Booking> */
 export interface Reference {
 	kind: ModelKind.REF;
+	/** Resolved reference name */
 	name: string;
+	/** Original reference name (effective name in the code) */
+	oName: string;
+	/** Reference full name */
+	fullName: string | undefined;
 	/** source file name. Used for debugger */
 	fileName: string;
 	/** Params in case of generic type */
 	params: FieldType[] | undefined;
-	/** Visible own and inherited fields with their flags */
+	/** Node: enables us to resolve fields for dynamic fields (like Omit and Partial) */
 	visibleFields:
-		| Map<string, { flags: ts.SymbolFlags; className: string }>
+		| Map<
+				string,
+				{
+					flags: ts.SymbolFlags;
+					className: string;
+				}
+		  >
 		| undefined;
 }
 
@@ -224,3 +237,4 @@ export interface Param extends _Node {
 	kind: ModelKind.PARAM;
 	type: Reference | undefined;
 }
+// todo complete reference integration(visible fields)
