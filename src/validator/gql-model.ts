@@ -11,6 +11,8 @@ export interface GqlObjectNode {
 /** Graphql validation field */
 export interface GqlField {
 	name: string;
+	/** TargetName: equals "alias ?? name" */
+	targetName: string;
 	kind: ModelKind.INPUT_FIELD;
 	type?: GqlNode;
 	/** Input validator */
