@@ -31,7 +31,7 @@ async function _validateObj(
 	var result: Record<string, any> = {};
 	for (let i = 0, len = fields.length; i < len; ++i) {
 		let field = fields[i];
-		let fieldData = data[field.name];
+		let fieldData = data[field.targetName];
 		if (fieldData != null) {
 			// Asserts
 			field.assert?.(fieldData);
@@ -59,7 +59,7 @@ async function _validateObj(
 				}
 			}
 			// Save data
-			result[field.targetName] = fieldData;
+			result[field.name] = fieldData;
 		}
 	}
 	return result;
