@@ -79,6 +79,8 @@ export interface PlainObject extends _Node {
 	generics: string[] | undefined;
 	/** Fields count: used to generate indexes for owned fields */
 	ownedFields: number;
+	/** Input validator */
+	validate: MethodDescriptor | undefined;
 }
 
 /** Object literal */
@@ -143,6 +145,11 @@ export interface MethodDescriptor {
 	isStatic: boolean;
 	/** Is target a class */
 	isClass: boolean;
+}
+
+/** Input resolver method */
+export interface InputEntityResolver extends MethodDescriptor {
+	entityName: string;
 }
 
 /** List */

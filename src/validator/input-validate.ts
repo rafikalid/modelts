@@ -15,13 +15,13 @@ export function inputValidationWrapper(
 	method: GraphQLFieldResolver<any, any, any>
 ): GraphQLFieldResolver<any, any, any> {
 	return async function (parent: any, args: any, ctx: any, info: any) {
-		args = await _validateObj(config, args, ctx, info);
+		args = await validateObj(config, args, ctx, info);
 		return method(parent, args, ctx, info);
 	};
 }
 
 /** Validate data */
-async function _validateObj(
+export async function validateObj(
 	config: GqlObjectNode,
 	data: Record<string, any>,
 	ctx: any,
@@ -43,14 +43,14 @@ async function _validateObj(
 			if (subType != null) {
 				if (subType.kind === ModelKind.LIST) {
 					if (_isArray(fieldData) === false) fieldData = [fieldData];
-					fieldData = await _validateList(
+					fieldData = await validateList(
 						subType,
 						fieldData,
 						ctx,
 						info
 					);
 				} else if (subType.kind === ModelKind.PLAIN_OBJECT) {
-					fieldData = await _validateObj(
+					fieldData = await validateObj(
 						subType,
 						fieldData,
 						ctx,
@@ -65,7 +65,7 @@ async function _validateObj(
 	return result;
 }
 /** Validate List */
-async function _validateList(
+export async function validateList(
 	config: GqlListNode,
 	data: any[],
 	ctx: any,
@@ -91,11 +91,11 @@ async function _validateList(
 	var childType = config.type;
 	if (childType.kind === ModelKind.LIST) {
 		for (let i = 0; i < len; ++i) {
-			result[i] = await _validateList(childType, result[i], ctx, info);
+			result[i] = await validateList(childType, result[i], ctx, info);
 		}
 	} else if (childType.kind === ModelKind.PLAIN_OBJECT) {
 		for (let i = 0; i < len; ++i) {
-			result[i] = await _validateObj(childType, result[i], ctx, info);
+			result[i] = await validateObj(childType, result[i], ctx, info);
 		}
 	}
 	return result;

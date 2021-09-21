@@ -1,3 +1,5 @@
+import { PlainObject } from '..';
+
 /** Resolver signature */
 export type Resolver<Tparent, Tresult> = (
 	parent: Tparent,
@@ -13,11 +15,19 @@ export type ResolversOf<T> = {
 
 /** Add input controller to a model */
 export type InputResolversOf<T> = {
-	[P in keyof T]?: InputResolver<T, T[P]>;
+	[P in keyof T]?: InputResolverFx<T, T[P]>;
 };
 
+/** Resolve input object */
+export type InputResolver<T extends PlainObject> = (
+	parent: any,
+	value: T,
+	context?: any,
+	info?: any
+) => T | Promise<T>;
+
 /** Input resolver */
-export type InputResolver<T, P> = (
+export type InputResolverFx<T, P> = (
 	parent: T,
 	value: P,
 	context?: any,
