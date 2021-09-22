@@ -29,7 +29,7 @@ export type InputResolver<T extends PlainObject> = (
 /** Input resolver */
 export type InputResolverFx<T, P> = (
 	parent: T,
-	value: P,
+	value: P | any,
 	context?: any,
 	info?: any
 ) => P | Promise<P>;
