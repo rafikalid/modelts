@@ -23,81 +23,48 @@ export interface UNION<Types> {
 /** Model resolver config */
 export interface ResolverConfig<T> {
 	/** Output resolvers */
-	output: 
+	outputFields?: ResolverOutputConfig<T>,
+	/** Input resolvers */
+	inputFields?: ResolverInputConfig<T>
+	/** Exec Operation before output, not available for Graphql */
+	outputBefore?: ResolverOutputMethod<T, T>
+	/** Exec Operation before output, not available for Graphql */
+	outputAfter?: ResolverOutputMethod<T, T>
+	/** Exec Before input */
+	inputBefore?: ResolverInputMethod<T, T>
+	/** Exec After input */
+	inputAfter?: ResolverInputMethod<T, T>
 }
 
 
 /** Model output resolvers */
-export interface ResolverOutputConfig<T> { }
-
-/** Mode input config */
-export interface ResolverInputConfig<T> { }
-
-// Define Object model
-export const ServiceConfig: ResolverConfig<Service> = {
-	output: new class {
-
-	},
-	beforeInput: function () { },
-	input: new class {
-
-	},
-	afterInput: function () { }
+export type ResolverOutputConfig<T> = {
+	[P in keyof T]?: ResolverOutputMethod<T, any>
 }
 
+/** Model input config */
+export type ResolverInputConfig<T> = {
+	[P in keyof T]?: ResolverInputMethod<T, T[P]>;
+}
 
+/** Input resolver method signature */
+export type ResolverInputMethod<P, T> = (
+	parent: P,
+	value: T | any,
+	context?: any,
+	info?: any
+) => T | Promise<T>;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-import { PlainObject } from '..';
-
-/** Resolver signature */
-export type Resolver<Tparent, Tresult> = (
-	parent: Tparent,
+/** Output resolver method signature */
+export type ResolverOutputMethod<P, T> = (
+	parent: P,
 	args: any,
 	context?: any,
 	info?: any
-) => Tresult extends undefined ? Tresult | void : Tresult;
+) => T extends undefined ? T | void : T;
 
-/** Convert Model to optional resolvers signature */
-export type ResolversOf<T> = {
-	[P in keyof T]?: Resolver<T, any>;
-};
+/** Maybe return value or null or undefined */
+export type Maybe<T> = T | null | undefined | Promise<T | null | undefined>;
 
-/** Add input controller to a model */
-export type InputResolversOf<T> = {
-	[P in keyof T]?: InputResolverFx<T, T[P]>;
-};
-
-/** Resolve input object */
-export interface InputResolver<T> {
-	/** Process before */
-	before: InputResolverFx<T, T>
-
-	/** Process After */
-	after: InputResolverFx<T, T>
-}
-
-/** Input resolver */
-export type InputResolverFx<T, P> = (
-	parent: T,
-	value: P | any,
-	context?: any,
-	info?: any
-) => P | Promise<P>;
+/** Maybe return value or null or undefined */
+export type MaybeAsync<T> = Promise<T | null | undefined>;

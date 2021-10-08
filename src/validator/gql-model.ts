@@ -1,4 +1,4 @@
-import type { InputResolverFx } from '@src/parser/interfaces';
+import { ResolverInputMethod } from '@src/parser/interfaces';
 import type { ModelKind } from '@src/parser/model';
 
 export type GqlNode = GqlObjectNode | GqlListNode;
@@ -6,8 +6,8 @@ export type GqlNode = GqlObjectNode | GqlListNode;
 export interface GqlObjectNode {
 	kind: ModelKind.PLAIN_OBJECT;
 	fields: GqlField[];
-	before: InputResolverFx<unknown, unknown> | undefined;
-	after: InputResolverFx<unknown, unknown> | undefined;
+	inputBefore: ResolverInputMethod<any, any> | undefined;
+	inputAfter: ResolverInputMethod<any, any> | undefined;
 }
 
 /** Graphql validation field */
@@ -18,7 +18,7 @@ export interface GqlField {
 	kind: ModelKind.INPUT_FIELD;
 	type?: GqlNode;
 	/** Input validator */
-	input?: InputResolverFx<unknown, unknown>;
+	input?: ResolverInputMethod<unknown, unknown>;
 	/** Asserts */
 	assert?: (value: unknown) => unknown;
 }
@@ -29,7 +29,7 @@ export interface GqlListNode {
 	/** items type */
 	type: GqlNode;
 	/** Input validator */
-	input?: InputResolverFx<unknown, unknown>;
+	input?: ResolverInputMethod<unknown, unknown>;
 	/** Asserts */
 	assert?: (value: unknown) => unknown;
 }

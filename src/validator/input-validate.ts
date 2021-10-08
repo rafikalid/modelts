@@ -31,8 +31,8 @@ export async function validateObj(
 	var fields = config.fields;
 	var result: Record<string, any> = {};
 	// Validate obj: before
-	if (config.before != null) {
-		data = await config.before(parent, data, ctx, info) as Record<string, any>;
+	if (config.inputBefore != null) {
+		data = await config.inputBefore(parent, data, ctx, info) as Record<string, any>;
 	}
 	// Validate fields
 	for (let i = 0, len = fields.length; i < len; ++i) {
@@ -71,8 +71,8 @@ export async function validateObj(
 		}
 	}
 	// Validate obj: after
-	if (config.after != null) {
-		result = await config.after(parent, result, ctx, info) as Record<string, any>;
+	if (config.inputAfter != null) {
+		result = await config.inputAfter(parent, result, ctx, info) as Record<string, any>;
 	}
 	return result;
 }
