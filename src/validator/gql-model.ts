@@ -6,6 +6,8 @@ export type GqlNode = GqlObjectNode | GqlListNode;
 export interface GqlObjectNode {
 	kind: ModelKind.PLAIN_OBJECT;
 	fields: GqlField[];
+	before: InputResolverFx<unknown, unknown> | undefined;
+	after: InputResolverFx<unknown, unknown> | undefined;
 }
 
 /** Graphql validation field */

@@ -1,3 +1,5 @@
+import { ModelScalar } from "..";
+
 /** default scalars: int */
 export const DEFAULT_SCALARS = [
 	'number',
@@ -14,27 +16,6 @@ export type uInt = number;
 
 /** Double precision floating point */
 export type Float = number;
-
-/** Scalar define options */
-export type JsonTypes = string | number | boolean; // |null|undefined
-
-/** Create new Scalar */
-export interface ModelScalar<T> {
-	/** Parse value */
-	parse?: (value: JsonTypes) => T;
-	/** Stringify value */
-	serialize?: (value: T) => JsonTypes | undefined | null;
-	/** Load from Database */
-	fromDB?: (value: any) => T;
-	/** Save into database */
-	toDB?: (value: T) => any;
-}
-
-/** Unions */
-export interface UNION<Types> {
-	// Return the index of target type
-	resolveType: (value: Types, context?: any, info?: any) => number;
-}
 
 //* Custom scalars
 export const numberScalar: ModelScalar<number> = {
