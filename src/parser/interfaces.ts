@@ -26,16 +26,30 @@ export interface ResolverConfig<T> {
 	outputFields?: ResolverOutputConfig<T>,
 	/** Input resolvers */
 	inputFields?: ResolverInputConfig<T>
-	/** Exec Operation before output, not available for Graphql */
-	outputBefore?: ResolverOutputMethod<T, T>
-	/** Exec Operation before output, not available for Graphql */
-	outputAfter?: ResolverOutputMethod<T, T>
-	/** Exec Before input */
-	inputBefore?: ResolverInputMethod<T, T>
-	/** Exec After input */
-	inputAfter?: ResolverInputMethod<T, T>
+	/** Exec Operation before and after input validation */
+	wrapInput?: InputWrapper<T, T>
+	/** Exec Operation before and after output */
+	wrapOutput?: OutputWrapper<T, T>
 }
 
+/** Input wrapper */
+export type InputWrapper<P, T> = (
+	parent: P,
+	value: T | any,
+	context: any,
+	info: any,
+	next: () => void
+) => T | Promise<T>;
+
+
+/** Output wrapper */
+export type OutputWrapper<P, T> = (
+	parent: P,
+	args: any,
+	context: any,
+	info: any,
+	next: () => void
+) => T extends undefined ? T | void : T;
 
 /** Model output resolvers */
 export type ResolverOutputConfig<T> = {
@@ -68,3 +82,12 @@ export type Maybe<T> = T | null | undefined | Promise<T | null | undefined>;
 
 /** Maybe return value or null or undefined */
 export type MaybeAsync<T> = Promise<T | null | undefined>;
+
+/** Wrap connection */
+export type RootWrapper = (
+	parent: any,
+	args: any,
+	context: any,
+	info: any,
+	next: () => void
+) => any;

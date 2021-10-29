@@ -15,7 +15,7 @@ export class Model {
 	}
 
 	/** Convert Model into graphql */
-	static toGraphQL(...globFilesPath: string[]): GraphQLSchema {
+	static scanGraphQL(...globFilesPath: string[]): GraphQLSchema {
 		throw new Error('Unexpected call. You forgot to run the compiler!');
 	}
 }
