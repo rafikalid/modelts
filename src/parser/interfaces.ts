@@ -14,6 +14,15 @@ export interface ModelScalar<T> {
 	toDB?: (value: T) => any;
 }
 
+/**
+ * Basic Scalar
+ * @internal
+ */
+export interface ModelBasicScalar<T> extends ModelScalar<T> {
+	/** Explicit scalar description */
+	description: string
+}
+
 /** Unions */
 export interface UNION<Types> {
 	// Return the index of target type
