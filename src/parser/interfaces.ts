@@ -1,3 +1,5 @@
+/** Clone type */
+export type CloneType<T> = { [k in keyof T]: T[k] };
 
 /** Scalar define options */
 export type JsonTypes = string | number | boolean; // |null|undefined

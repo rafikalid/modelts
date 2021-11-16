@@ -1,4 +1,4 @@
-import { ModelBasicScalar } from "..";
+import { CloneType, ModelBasicScalar } from "..";
 
 /** default scalars: int */
 export const DEFAULT_SCALARS = [
@@ -12,11 +12,11 @@ export const DEFAULT_SCALARS = [
 ] as const;
 
 /** Integers */
-export type Int = number;
-export type uInt = number;
+export type Int = CloneType<number>;
+export type uInt = CloneType<number>;
 
 /** Double precision floating point */
-export type Float = number;
+export type Float = CloneType<number>;
 
 //* Custom scalars
 export const numberScalar: ModelBasicScalar<number> = {
@@ -56,7 +56,7 @@ export const intScalar: ModelBasicScalar<Int> = {
 };
 
 /** Unsigned Float */
-export type uFloat = number;
+export type uFloat = CloneType<number>;
 export const uFloatScalar: ModelBasicScalar<uFloat> = {
 	description: 'Float',
 	parse(value) {
