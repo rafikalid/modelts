@@ -1,5 +1,5 @@
 /** Clone type */
-export type CloneType<T> = { [k in keyof T]: T[k] };
+export type CloneType<T> = Pick<T, keyof T>;
 
 /** Scalar define options */
 export type JsonTypes = string | number | boolean; // |null|undefined
@@ -37,10 +37,18 @@ export interface ResolverConfig<T> {
 	outputFields?: ResolverOutputConfig<T>,
 	/** Input resolvers */
 	inputFields?: ResolverInputConfig<T>
+	/** Exec operation before input validation */
+	BeforeInput?: ResolverInputMethod<T, T>
+	/** Exec after input */
+	AfterInput?: ResolverInputMethod<T, T>
 	/** Exec Operation before and after input validation */
 	wrapInput?: InputWrapper<T, T>
 	/** Exec Operation before and after output */
 	wrapOutput?: OutputWrapper<T, T>
+	/** Exec operations before output */
+	beforeOutput?: ResolverOutputMethod<T, T>
+	/** Exec operations after output */
+	afterOutput?: ResolverOutputMethod<T, T>
 }
 
 /** Input wrapper */
