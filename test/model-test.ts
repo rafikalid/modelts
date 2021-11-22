@@ -25,35 +25,35 @@ export interface UserModel {
 	message: string,
 
 	history:
-		{
-			ar1: string
-		}[]
+	{
+		ar1: string
+	}[]
 }
 
 /** @tsmodel */
-export type Email= `/$Email regex^/`;
+export type Email = `/$Email regex^/`;
 
 /** @tsmodel */
-export type ID= string;
+export type ID = string;
 
 /** @tsmodel */
 export class UserResolvers implements ResolversOf<UserModel>{
-	private ignoreThisfield?: number= 5225;
+	private ignoreThisfield?: number = 5225;
 	/** Overriding booking comment */
-	@assert({max:55})
-	Bookings(parent: any, args: string[], context: any, infos: any):void{
+	@assert({ max: 55 })
+	Bookings(parent: any, args: string[], context: any, infos: any): void {
 		// this is a resolver
 	}
 
 	/** a message */
-	message(parent: any, args: Booking, context: any, infos: any): string{
-		var s: string= 'hello';
+	message(parent: any, args: Booking, context: any, infos: any): string {
+		var s: string = 'hello';
 		return s;
 	}
 
 	/** Custom method */
 	@ignore
-	customMethod(){
+	customMethod() {
 		return 'this is not a resolver!';
 	}
 }
@@ -62,7 +62,7 @@ export class UserResolvers implements ResolversOf<UserModel>{
  * @tsmodel
  * Bookings
  */
-export interface Booking{
+export interface Booking {
 	id: ID,
 	name: string
 }
@@ -71,8 +71,8 @@ export interface Booking{
  * User interface
  * @tsmodel
  */
-export interface User{
-	id:		ID,
+export interface User {
+	id: ID,
 	/**
 	 * User's name
 	 * @assert {max: 20, min: 17} - Expected value between 20 and 17
@@ -80,50 +80,43 @@ export interface User{
 	 * @type {string} - string type
 	 * @deprecated use anyting instead :D
 	 */
-	name:	string,
+	name: string,
 	/**
 	 * User's age
 	 * @assert {gte: 66, lte: 88} - Expected value between 15 and 66
 	 * @has {EDIT_STAFF} - Excepected permission Edit staff
 	 */
-	age?:	Int
+	age?: Int
 }
 
 /**
  * @tsmodel
  * Enum
  */
-export enum roles{
+export enum roles {
 	/** A basic employee role */
 	basicEmployee,
 	/** Normal employee role */
-	employee=5825,
+	employee = 5825,
 	/** Store manager */
-	manager='managerValue',
+	manager = 'managerValue',
 	/** Store owner */
-	owner='ownerValue'
+	owner = 'ownerValue'
 }
 
 /** Model */
-export const model= new Model();
+export const model = new Model();
 
 /** type example */
-export type ObjectId= ``;
+export type ObjectId = ``;
 
 /** Object id scalar */
-export const ObjectIdScalar: ModelScalar<ObjectId>= {
-	parse(value: JsonTypes){
+export const ObjectIdScalar: ModelScalar<ObjectId> = {
+	parse(value: JsonTypes) {
 		return value as ObjectId;
 	},
-	serialize(value){
+	serialize(value) {
 		return String(value);
 	}
 };
 
-/** Union */
-export const UnionExample: UNION<User|Booking>= {
-	resolveType(value, info: any){
-		var s: number= 1522
-		return s;
-	}
-}
