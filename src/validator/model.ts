@@ -5,16 +5,28 @@ export enum Kind {
 	/** Output object */
 	OUTPUT_OBJECT,
 	/** List */
-	LIST
+	INPUT_LIST
 }
 
 /** Input Object */
 export interface InputObject {
 	kind: Kind.INPUT_OBJECT
-	fields: 
+	fields: InputField[]
 }
-/** */
+/** Input fields */
+export interface InputField {
+	name: string;
+	required: boolean;
+	/** Before executing validation on this field */
+	before?: () => void;
+	/** After executing validation on this field */
+	after?: () => void;
+	/** Wrappers */
+	wrappers?: (() => void)[];
+	/** Link to type */
+	type: InputList | InputObject;
+}
 /** List */
-export interface List {
-	kind: Kind.LIST
+export interface InputList extends Omit<InputField, 'name'> {
+	kind: Kind.INPUT_LIST
 }
