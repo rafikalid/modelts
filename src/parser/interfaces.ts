@@ -38,9 +38,9 @@ export interface ResolverConfig<T> {
 	/** Input resolvers */
 	inputFields?: ResolverInputConfig<T>
 	/** Exec operation before input validation */
-	BeforeInput?: ResolverInputMethod<T, T>
+	beforeInput?: ResolverInputMethod<T, T>
 	/** Exec after input */
-	AfterInput?: ResolverInputMethod<T, T>
+	afterInput?: ResolverInputMethod<T, T>
 	/** Exec Operation before and after input validation */
 	wrapInput?: InputWrapper<T, T>
 	/** Exec Operation before and after output */

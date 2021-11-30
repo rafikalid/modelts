@@ -11,13 +11,14 @@ export enum Kind {
 /** Input Object */
 export interface InputObject {
 	kind: Kind.INPUT_OBJECT
+	name: string
 	fields: InputField[]
 	/** Before executing validation on this field */
-	before?: () => void;
+	before: undefined | ResolverMethod;
 	/** After executing validation on this field */
-	after?: () => void;
+	after: undefined | ResolverMethod;
 	/** Wrappers */
-	wrappers?: (() => void)[];
+	wrap: undefined | ResolverMethodWrapper;
 }
 /** Input fields */
 export interface InputField {
@@ -36,3 +37,6 @@ export interface InputList {
 	/** Link to type */
 	type: InputList | InputObject;
 }
+
+export type ResolverMethod = (parent: any, value: any, ctx: any, info: any) => any
+export type ResolverMethodWrapper = (parent: any, value: any, ctx: any, info: any, next: () => any) => any
