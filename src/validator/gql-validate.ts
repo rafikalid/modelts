@@ -1,6 +1,6 @@
 import { InputObject, InputList } from "./model";
 
 /** Validate GraphQL Inputs */
-export function pipeInputGQL(input: any, schema: InputObject | InputList) {
-	return input;
+export function pipeInputGQL(schema: InputObject | InputList, parent: any, args: any, ctx: any, info: any) {
+	return args;
 }

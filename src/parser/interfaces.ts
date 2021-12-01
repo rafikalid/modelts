@@ -102,11 +102,11 @@ export type Maybe<T> = T | null | undefined | Promise<T | null | undefined>;
 /** Maybe return value or null or undefined */
 export type MaybeAsync<T> = Promise<T | null | undefined>;
 
-/** Wrap connection */
-export type RootWrapper = (
-	parent: any,
-	args: any,
-	context: any,
-	info: any,
-	next: () => void
-) => any;
+
+
+/** Root config */
+export interface RootConfig {
+	before?: ResolverOutputMethod<any, any>
+	after?: ResolverOutputMethod<any, any>
+	wrap?: OutputWrapper<any, any>
+}

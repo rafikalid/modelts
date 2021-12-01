@@ -15,8 +15,12 @@ export interface InputObject {
 	fields: InputField[]
 	/** Before executing validation on this field */
 	before: undefined | ResolverMethod;
+	/** If "before" is async, used to improve performance */
+	beforeAsync: boolean;
 	/** After executing validation on this field */
 	after: undefined | ResolverMethod;
+	/** If "before" is async, used to improve performance */
+	afterAsync: boolean;
 	/** Wrappers */
 	wrap: undefined | ResolverMethodWrapper;
 }
@@ -29,6 +33,8 @@ export interface InputField {
 	type: InputList | InputObject;
 	/** Pipe input data */
 	pipe: (value: any) => any
+	/** If "pipe" is async, used to improve performance */
+	pipeAsync: boolean;
 }
 /** List */
 export interface InputList {
