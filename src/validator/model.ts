@@ -31,8 +31,10 @@ export interface InputField {
 	required: boolean;
 	/** Link to type */
 	type: InputList | InputObject;
+	/** Assert */
+	assert: (args: any) => any
 	/** Pipe input data */
-	pipe: (value: any) => any
+	pipe: (parent: any, args: any, ctx: any, info: any) => any
 	/** If "pipe" is async, used to improve performance */
 	pipeAsync: boolean;
 }
