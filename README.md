@@ -12,3 +12,5 @@ More flexible, simple and intuitive than graphql SDL
 Write less code than GraphQL SDL
 Intuitive & simple validation
 
+## Force order fields
+add tag @ordered
