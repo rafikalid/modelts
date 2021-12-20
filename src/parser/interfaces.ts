@@ -110,3 +110,9 @@ export interface RootConfig {
 	after?: ResolverOutputMethod<any, any>
 	wrap?: OutputWrapper<any, any>
 }
+
+/** Map input format to target format */
+export type MapInput<TargetFormat, InputFormat> = (value: InputFormat) => TargetFormat;
+
+/** Map data format to output format */
+export type MapOutput<srcFormat, OutputFormat> = (value: srcFormat) => OutputFormat;
