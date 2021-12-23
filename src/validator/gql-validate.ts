@@ -86,8 +86,6 @@ export async function pipeInputGQL(schema: InputObject | InputList, parent: any,
 				// Do validation
 				switch (node.kind) {
 					case Kind.INPUT_OBJECT: {
-						console.log('=====>', node.name)
-						console.log('===x==>', node.fields)
 						// Validate fields
 						let data: Record<string, any> = {};
 						for (let i = 0, fields = node.fields, len = fields.length; i < len; ++i) {
@@ -97,8 +95,8 @@ export async function pipeInputGQL(schema: InputObject | InputList, parent: any,
 								if (field.pipeAsync) v = await field.pipe(args, v, ctx, info);
 								else v = field.pipe(args, v, ctx, info);
 							}
-							console.log(field.name, '>', v)
-							data[field.name] = v;
+							if (v != null)
+								data[field.name] = v;
 						}
 						// Post validation
 						if (node.after != null) {

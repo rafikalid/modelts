@@ -18,8 +18,8 @@ export interface ModelScalar<T> {
 
 /** Object converter */
 export interface Converter<T> {
-	input?: (value: any) => T
-	output?: (value: T) => any
+	input?: (parent: any, value: any, ctx: any, info: any) => T | undefined
+	output?: (parent: any, value: T | undefined, ctx: any, info: any) => T | undefined
 }
 
 /**
