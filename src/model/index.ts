@@ -10,7 +10,7 @@ export class Model {
 	}
 
 	/** Compile files into Model */
-	static scan(globFilesPath: string, ...rootModels: string[]): Model {
+	static scan(...globFilesPath: string[]): Model {
 		throw new Error('Unexpected call. You forgot to run the compiler!');
 	}
 
