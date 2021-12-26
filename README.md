@@ -985,10 +985,6 @@ use [tt-model-compiler](https://www.npmjs.com/package/tt-model-compiler) at http
 - Khalid RAFIK <khalid.rfk@gmail.com>
 	- Software Architect
 	- Senior FullStack Engineer
-	- Cloud Engineer
-	- Security Engineer
-- Wijdane EL HORRE <wijdane.elhorre19@gmail.com>
-	- Senior Backend and Data Engineer
 
 # License
 MIT License
