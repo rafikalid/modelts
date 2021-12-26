@@ -989,8 +989,6 @@ use [tt-model-compiler](https://www.npmjs.com/package/tt-model-compiler) at http
 	- Security Engineer
 - Wijdane EL HORRE <wijdane.elhorre19@gmail.com>
 	- Senior Backend and Data Engineer
-- Abdelhakim RAFIK <a.abdelhakim@gmail.com>
-	- FullStack engineer
 
 # License
 MIT License
