@@ -984,12 +984,9 @@ use [tt-model-compiler](https://www.npmjs.com/package/tt-model-compiler) at http
 # Authors
 - Khalid RAFIK <khalid.rfk@gmail.com>
 	- Software Architect
-	- Senior FullStack Engineer
+	- Senior FullStack and DATA Engineer
+- Wijdane EL HORRE <wijdane.elhorre19@gmail.com>
+	- Senior Backend and DATA Engineer
 
 # License
 MIT License
-
-# Help us
-- Add a star to our github repository
-- Contribute to code and tests
-- Write documentations
