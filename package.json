@@ -1,6 +1,6 @@
 {
 	"name": "tt-model",
-	"version": "0.0.25",
+	"version": "0.0.26",
 	"description": "Fast and easy to use Model framework for Typescript, GraphQL, REST and JSON",
 	"main": "dist/commonjs/index.js",
 	"exports": {
