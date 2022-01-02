@@ -987,6 +987,8 @@ use [tt-model-compiler](https://www.npmjs.com/package/tt-model-compiler) at http
 	- Senior FullStack and BigDATA Engineer
 - Wijdane EL HORRE <wijdane.elhorre19@gmail.com>
 	- Senior Backend and BigDATA Engineer
+- Abdelhakim RAFIK <ra.abdelhakim@gmail.com>
+	- Fullstack and Security Engineer
 
 # License
 MIT License

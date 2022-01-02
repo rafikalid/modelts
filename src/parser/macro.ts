@@ -2,26 +2,35 @@ import ts from "typescript";
 
 /** Extract parameters */
 type MacroParams<T extends (...args: any) => any> = T extends (
-	node: ts.Node,
+	node: MacroAnnotationNode,
 	utils: MacroUtils,
 	...args: infer P
 ) => any ? P : never;
 
 /** Create property annotation macro */
-export function AnnotationMacro<T extends (node: ts.Node, utils: MacroUtils, ...args: any) => ts.Node>(cb: T):
+export function AnnotationMacro<T extends MacroAnnotationHandler>(cb: T):
 	(...args: MacroParams<T>) => (
 		target: any,
 		propertyKey?: string,
 		descriptor?: PropertyDescriptor
 	) => any {
-	throw new Error('Please compile your code using "tt-model-compiler"');
+	//* Add annotation handler
+
+	//* Annotation interface 
+	return function (...args: MacroParams<T>) {
+		throw new Error('Wrong use of Macro Annotation. Did you forget to compile your code using "tt-model-compiler" ?');
+	}
 }
 
+/** Macro handler */
+export type MacroAnnotationHandler = (node: MacroAnnotationNode, utils: MacroUtils, ...args: any) => MacroAnnotationNode;
+
+export type MacroAnnotationNode = ts.ClassDeclaration | ts.MethodDeclaration | ts.PropertyDeclaration;
 
 /** Property info */
 export class MacroUtils {
 	/** Node */
-	node: ts.Node;
+	node: MacroAnnotationNode;
 	/** Program */
 	program: ts.Program;
 	/** Factory */
@@ -33,7 +42,7 @@ export class MacroUtils {
 	/** Annotation arguments as string */
 	annotationArgs: string[];
 
-	constructor(program: ts.Program, node: ts.Node, annotationArgs: string[]) {
+	constructor(program: ts.Program, node: MacroAnnotationNode, annotationArgs: string[]) {
 		this.ts = ts;
 		this.node = node;
 		this.program = program;
