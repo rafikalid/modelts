@@ -40,14 +40,16 @@ export class MacroUtils {
 	/** Printer */
 	printer: ts.Printer;
 	/** Annotation arguments as string */
-	annotationArgs: string[];
+	args: string[];
+	argv: any[];
 
-	constructor(program: ts.Program, node: MacroAnnotationNode, annotationArgs: string[]) {
+	constructor(program: ts.Program, node: MacroAnnotationNode, args: string[], argv: any[]) {
 		this.ts = ts;
 		this.node = node;
 		this.program = program;
-		this.annotationArgs = annotationArgs;
 		this.factory = ts.factory;
+		this.args = args;
+		this.argv = argv;
 		this.printer = ts.createPrinter({
 			omitTrailingSemicolon: false,
 			removeComments: true
@@ -62,16 +64,16 @@ export class MacroUtils {
 	isClass(node: ts.Node): node is ts.ClassLikeDeclaration { return ts.isClassLike(node); }
 
 
-	/** List method args */
-	listMethodArgs(node: ts.MethodDeclaration): string[] {
-		const result: string[] = [];
-		const printer = this.printer;
-		for (let i = 0, args = node.parameters, len = args.length; i < len; ++i) {
-			let arg = args[i];
-			result.push(printer.printNode(ts.EmitHint.Unspecified, arg, arg.getSourceFile()))
-		}
-		return result;
-	}
+	// /** List method args */
+	// listMethodArgs(node: ts.MethodDeclaration): string[] {
+	// 	const result: string[] = [];
+	// 	const printer = this.printer;
+	// 	for (let i = 0, args = node.parameters, len = args.length; i < len; ++i) {
+	// 		let arg = args[i];
+	// 		result.push(printer.printNode(ts.EmitHint.Unspecified, arg, arg.getSourceFile()))
+	// 	}
+	// 	return result;
+	// }
 
 	/** Has static modifier */
 	isStatic(node: ts.Node) {
@@ -90,11 +92,99 @@ export class MacroUtils {
 	/** Create unique name */
 	uniqueName(text: string) { return this.factory.createUniqueName(text); }
 
+	// /** Update method body */
+	// setMethodBody(node: ts.MethodDeclaration, body: ts.Statement[]) {
+	// 	const factory = this.factory;
+	// 	return factory.updateMethodDeclaration(
+	// 		node, node.decorators, node.modifiers, node.asteriskToken, node.name, node.questionToken,
+	// 		node.typeParameters, node.parameters, node.type, factory.createBlock(body));
+	// }
+
 	/** Update method body */
-	setMethodBody(node: ts.MethodDeclaration, body: ts.Statement[]) {
+	updateMethodBody(
+		node: ts.MethodDeclaration,
+		cb?: ((args: any, body: ts.Statement[]) => ts.Statement[]),
+		prepend?: ((args: any, body: ts.Statement[]) => ts.Statement[])
+	): ts.MethodDeclaration {
 		const factory = this.factory;
-		return factory.updateMethodDeclaration(
-			node, node.decorators, node.modifiers, node.asteriskToken, node.name, node.questionToken,
-			node.typeParameters, node.parameters, node.type, factory.createBlock(body));
+		var body: ts.Statement[] = [];
+		// Normalize args
+		let params = node.parameters;
+		let targetParams: ts.ParameterDeclaration[] = [];
+		for (let i = 0, len = params.length; i < len; ++i) {
+			let param = params[i];
+			if (param.name.kind === ts.SyntaxKind.ObjectBindingPattern) {
+				let objPattern = param.name;
+				let pArg = factory.createUniqueName('param');
+				param = factory.updateParameterDeclaration(
+					param, param.decorators, param.modifiers, param.dotDotDotToken,
+					pArg, param.questionToken, param.type, param.initializer);
+				body.push(
+					factory.createVariableStatement(undefined,
+						factory.createVariableDeclarationList(
+							[factory.createVariableDeclaration(objPattern, undefined, undefined, pArg)],
+							ts.NodeFlags.Const
+						)
+					)
+				);
+			}
+			targetParams.push(param);
+		}
+		// Body
+		if (prepend != null) body = prepend(targetParams, body);
+		if (node.body?.statements != null) body.push(...node.body?.statements);
+		// Exec callback
+		if (cb != null) body = cb(targetParams, body);
+		// Update node
+		node = factory.updateMethodDeclaration(
+			node, node.decorators, node.modifiers, node.asteriskToken, node.name,
+			node.questionToken, node.typeParameters, targetParams, node.type, factory.createBlock(body));
+		return node;
+	}
+
+	/** Create if statement */
+	if(check: string | ts.Expression, thenStatement: string | ts.Statement, elseStatement?: string | ts.Statement): ts.IfStatement {
+		const factory = this.factory;
+		// fix check
+		if (typeof check === 'string') check = factory.createIdentifier(check);
+		if (typeof thenStatement === 'string') thenStatement = factory.createExpressionStatement(factory.createIdentifier(thenStatement));
+		if (typeof elseStatement === 'string') elseStatement = factory.createExpressionStatement(factory.createIdentifier(elseStatement));
+		// return
+		return factory.createIfStatement(check, thenStatement, elseStatement);
+	}
+
+	/** objAccess */
+	objAccess(expr: string | ts.Expression, ...args: string[]) {
+		const factory = this.factory;
+		if (typeof expr === 'string') expr = factory.createIdentifier(expr);
+		for (let i = 0, len = args.length; i < len; ++i) {
+			expr = factory.createPropertyAccessExpression(expr, args[i]);
+		}
+		return expr;
+	}
+	/** Binary expression */
+	binaryExpression(leftExpr: string | ts.Expression, operator: BinaryExpressionOperator, rightExpr: string | ts.Expression | boolean) {
+		const factory = this.factory;
+		if (typeof leftExpr === 'string') leftExpr = factory.createIdentifier(leftExpr);
+		if (typeof rightExpr === 'string') rightExpr = factory.createIdentifier(rightExpr);
+		else if (typeof rightExpr === 'boolean') rightExpr = rightExpr === true ? factory.createTrue() : factory.createFalse();
+		let token: ts.BinaryOperator | ts.BinaryOperatorToken;
+		switch (operator) {
+			case '=': token = factory.createToken(ts.SyntaxKind.EqualsToken); break;
+			case '==': token = factory.createToken(ts.SyntaxKind.EqualsEqualsToken); break;
+			case '===': token = factory.createToken(ts.SyntaxKind.EqualsEqualsToken); break;
+			case '&': token = factory.createToken(ts.SyntaxKind.AmpersandToken); break;
+			case '|': token = factory.createToken(ts.SyntaxKind.BarToken); break;
+			case '!=': token = factory.createToken(ts.SyntaxKind.ExclamationEqualsToken); break;
+			case '!==': token = factory.createToken(ts.SyntaxKind.ExclamationEqualsEqualsToken); break;
+			default: {
+				let t: never = operator;
+				throw new Error(`Unexpected operator: ${operator}`);
+			}
+		}
+		return factory.createBinaryExpression(leftExpr, token, rightExpr);
 	}
 }
+
+
+export type BinaryExpressionOperator = '=' | '==' | '===' | '&' | '|' | '!==' | '!=';
