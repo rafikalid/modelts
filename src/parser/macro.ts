@@ -111,9 +111,13 @@ export class MacroUtils {
 		// Normalize args
 		let params = node.parameters;
 		let targetParams: ts.ParameterDeclaration[] = [];
+		let paramVars: ts.Identifier[] = [];
 		for (let i = 0, len = params.length; i < len; ++i) {
 			let param = params[i];
-			if (param.name.kind === ts.SyntaxKind.ObjectBindingPattern) {
+			if (
+				(param.name.kind === ts.SyntaxKind.ObjectBindingPattern) ||
+				(param.name.kind === ts.SyntaxKind.ArrayBindingPattern)
+			) {
 				let objPattern = param.name;
 				let pArg = factory.createUniqueName('param');
 				param = factory.updateParameterDeclaration(
@@ -127,14 +131,17 @@ export class MacroUtils {
 						)
 					)
 				);
+				paramVars.push(pArg);
+			} else {
+				paramVars.push(param.name);
 			}
 			targetParams.push(param);
 		}
 		// Body
-		if (prepend != null) body = prepend(targetParams, body);
+		if (prepend != null) body = prepend(paramVars, body);
 		if (node.body?.statements != null) body.push(...node.body?.statements);
 		// Exec callback
-		if (cb != null) body = cb(targetParams, body);
+		if (cb != null) body = cb(paramVars, body);
 		// Update node
 		node = factory.updateMethodDeclaration(
 			node, node.decorators, node.modifiers, node.asteriskToken, node.name,
@@ -172,7 +179,7 @@ export class MacroUtils {
 		switch (operator) {
 			case '=': token = factory.createToken(ts.SyntaxKind.EqualsToken); break;
 			case '==': token = factory.createToken(ts.SyntaxKind.EqualsEqualsToken); break;
-			case '===': token = factory.createToken(ts.SyntaxKind.EqualsEqualsToken); break;
+			case '===': token = factory.createToken(ts.SyntaxKind.EqualsEqualsEqualsToken); break;
 			case '&': token = factory.createToken(ts.SyntaxKind.AmpersandToken); break;
 			case '|': token = factory.createToken(ts.SyntaxKind.BarToken); break;
 			case '!=': token = factory.createToken(ts.SyntaxKind.ExclamationEqualsToken); break;
@@ -183,6 +190,21 @@ export class MacroUtils {
 			}
 		}
 		return factory.createBinaryExpression(leftExpr, token, rightExpr);
+	}
+	/** Create and affect value to a var */
+	createVar(varname: ts.Identifier, expr: ts.Expression | string) {
+		const factory = this.factory;
+		if (typeof expr === 'string') expr = factory.createIdentifier(expr);
+		return factory.createVariableStatement(undefined,
+			factory.createVariableDeclarationList(
+				[factory.createVariableDeclaration(
+					varname, undefined,
+					factory.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword),
+					expr
+				)],
+				ts.NodeFlags.None
+			)
+		)
 	}
 }
 
