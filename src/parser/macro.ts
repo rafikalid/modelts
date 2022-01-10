@@ -170,11 +170,12 @@ export class MacroUtils {
 		return expr;
 	}
 	/** Binary expression */
-	binaryExpression(leftExpr: string | ts.Expression, operator: BinaryExpressionOperator, rightExpr: string | ts.Expression | boolean) {
+	binaryExpression(leftExpr: string | ts.Expression, operator: BinaryExpressionOperator, rightExpr: string | ts.Expression | boolean | number) {
 		const factory = this.factory;
 		if (typeof leftExpr === 'string') leftExpr = factory.createIdentifier(leftExpr);
 		if (typeof rightExpr === 'string') rightExpr = factory.createIdentifier(rightExpr);
 		else if (typeof rightExpr === 'boolean') rightExpr = rightExpr === true ? factory.createTrue() : factory.createFalse();
+		else if (typeof rightExpr === 'number') rightExpr = factory.createNumericLiteral(rightExpr);
 		let token: ts.BinaryOperator | ts.BinaryOperatorToken;
 		switch (operator) {
 			case '=': token = factory.createToken(ts.SyntaxKind.EqualsToken); break;

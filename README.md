@@ -941,6 +941,169 @@ export const anyVarName: RootConfig = {
 };
 ```
 
+# Macro Decorators / Annotation
+Macro decorator or annotation helps you to redefine classes and methods. Generally to add extra code without scarifying performance.
+
+You may need knowledge of `typescript compiler api` to use this.
+
+## Using the Decorator / Annotation
+Use macro annotation just like you do with JS or Typescript Decorator
+
+```typescript
+@MyMacroAnnotationOnClass(...args)
+export classMyClass{
+
+	@MyMarcoAnnotationOnAttribute(...args)
+	myAttribute: any
+
+	@MyMacroAnnotationOnMethod(...args)
+	myMethod(){ /* ... */}
+}
+```
+
+## Define the Macro Decorator / Annotation
+
+```typescript
+import { AnnotationMacro, MacroAnnotationNode, MacroUtils } from 'tt-model';
+
+export const yourMacroName= AnnotationMacro(function(
+	node: MacroAnnotationNode,
+	utils: MacroUtils,
+	...OtherSpecificArgs
+){
+	// Your Macro logic
+	return node;
+});
+```
+
+`MacroAnnotationNode` is a typescript compiler node. You can use typescript compiler api to do advanced transformations if needed.
+```typescript
+type MacroAnnotationNode= ts.ClassDeclaration | ts.MethodDeclaration | ts.PropertyDeclaration;
+```
+
+`MacroUtils` contains easy to use helpers to transform the code. For advanced and full control use typescript compiler api.
+
+```typescript
+class MacroUtils{
+	/** Target node to be transformed: class or property */
+	node: ts.ClassDeclaration | ts.MethodDeclaration | ts.PropertyDeclaration;
+
+	/** Typescript Compiler Program */
+	program: ts.Program;
+
+	/** Typescript Compiler API */
+	ts: typeof ts;
+
+	/** Node printer */
+	printer: ts.Printer;
+
+	/** Decorator arguments: as wrote in the code */
+	args: string[]
+
+	/**
+	 * Decorator arguments as interpreted by the compiler
+	 * most of time: undefined
+	 */
+	argv: any[]
+
+	/** Check if a node is a method */
+	isMethod(node: ts.Node): node is ts.MethodDeclaration
+
+	/** Check a node is a property */
+	isProperty(node: ts.Node): node is ts.PropertyDeclaration
+
+	/** Check a node is a class declaration */
+	isClass(node: ts.Node): node is ts.ClassLikeDeclaration
+
+	/** Check a node has "static" keyword modifier */
+	isStatic(node: ts.Node): boolean
+
+	/** Get class or property name */
+	getName(node: ts.Node): string
+
+	/** Create unique name in the code */
+	uniqueName(hint: string): ts.Identifier
+
+	/** Update method body */
+	updateMethodBody(
+		node: ts.MethodDeclaration, // Method to update
+		/** Function that will update the method code */
+		callBack: (args: any, body: ts.Statement[]) => ts.Statement[],
+		/** Same as previous, but faster for code prepend */
+		prepend?: (args: any, body: ts.Statement[]) => ts.Statement[]
+	) : ts.MethodDeclaration
+
+	/** Create "if" statement */
+	if(
+		condition: string | ts.Expression,
+		thenStatement: string | ts.Statement,
+		elseStatement?: string | ts.Statement
+	): ts.IfStatement
+
+	/** Create Object access expression */
+	objAccess(expr: string | ts.Expression, ...args: string[]): ts.Expression
+
+	/** Create binary expression */
+	binaryExpression(
+		leftExpr: string | ts.Expression,
+		operator: '=' | '==' | '===' | '!=' | '!==' | '&' | '|',
+		rightExpr: string | ts.Expression | boolean | number
+	): ts.BinaryExpression
+
+	/** Create variable */
+	createVar(varname: ts.Identifier, value: ts.Expression | string) : ts.VariableStatement
+}
+```
+
+## Example
+In this example, we will create a macro `hasPermission` that adds permission check code to target methods. 
+The macro will be used as follow:
+
+```typescript
+export class MyClass{
+
+	@hasPermission(User.Permissions.ANY_PERMISSION))
+	doWhatEver(...args: any[]){
+		// Logic
+	}
+}
+```
+
+We will define the macro as follow:
+```typescript
+import { AnnotationMacro, MacroAnnotationNode, MacroUtils } from 'tt-model';
+
+export const hasPermission = AnnotationMacro(
+	function(
+		node: MacroAnnotationNode,
+		utils: MacroUtils,
+		// Any extra argument will be considered as the macro argument
+		permissions: YourPermissionType
+	){
+		// Add your logic here, modify the node and return it
+		// Assert node is of the correct type (method or class or attribute)
+		// Throw error if any
+		node = utils.updateMethodBody(node, undefined, function ([parent, args, ctx], body) {
+			// Push check instruction to the method body
+			body.push(
+				utils.if(
+					utils.binaryExpression(
+						utils.objAccess(ctx, 'session', 'isAuthenticated'),
+						'===', false
+					),
+					'throw new Error("Unauthorized Access.")'
+				)
+			);
+			// Add any other required instructions using "utils" or "typescript compiler api"
+			// return the body
+			return body;
+		});
+		// Return resulting node
+		return node;
+	}
+);
+```
+
 # Compile schema
 
 ## Use as GraphQL schema:
