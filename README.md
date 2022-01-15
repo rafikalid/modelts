@@ -20,10 +20,11 @@ Easy to use validations.
 
 | 					| GraphQL SDL | tt-Model	|
 |-------------------|-------------|-------------|
-| Learning curve |  new language | Easy, only typescript that you already use |
+| Learning curve |  Totally new language | Typescript that you already use |
 | Usable for programing |  no | yes, it's your typescript code |
 | Inheritance |  no | yes |
 | Generics |  no | yes |
+| Namespaces |  no | yes |
 | Macros |  no | yes |
 | Omit fields |    no   |   yes |
 | Ignore fields |    no   |   yes |
