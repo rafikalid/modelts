@@ -43,6 +43,9 @@ export class MacroUtils {
 	args: string[];
 	argv: any[];
 
+	/** Added imports */
+	_imports: ts.ImportDeclaration[] = [];
+
 	constructor(program: ts.Program, node: MacroAnnotationNode, args: string[], argv: any[]) {
 		this.ts = ts;
 		this.node = node;
@@ -206,6 +209,36 @@ export class MacroUtils {
 				ts.NodeFlags.None
 			)
 		)
+	}
+
+	/** Add imports */
+	addImport(importName: string, modulePath: string) {
+		const factory = this.factory;
+		const varname = factory.createUniqueName(importName);
+		this._imports.push(factory.createImportDeclaration(undefined, undefined,
+			factory.createImportClause(
+				false, undefined,
+				factory.createNamedImports([factory.createImportSpecifier(
+					false, factory.createIdentifier(importName), varname
+				)])
+			),
+			factory.createStringLiteral(modulePath), undefined
+		));
+		return varname;
+	}
+
+	/** Create throw expression */
+	throw(expr: ts.Expression) {
+		return this.factory.createThrowStatement(expr);
+	}
+	/** Create new expression */
+	new(name: ts.Expression, args: ts.Expression[]) {
+		return this.factory.createNewExpression(name, undefined, args);
+	}
+
+	/** Create string lateral */
+	string(value: string) {
+		return this.factory.createStringLiteral(value);
 	}
 }
 
