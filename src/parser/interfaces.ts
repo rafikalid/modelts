@@ -44,37 +44,39 @@ export interface ResolverConfig<T> {
 	/** Input resolvers */
 	inputFields?: ResolverInputConfig<T>
 	/** Exec operation before input validation */
-	beforeInput?: ResolverInputMethod<T, T>
+	beforeInput?: (parent: any, value?: T, context?: any, info?: any) => Maybe<T>;
 	/** Exec after input */
-	afterInput?: (parent: any, value: T, context?: any, info?: any) => T | Promise<T>;
-	/** Exec Operation before and after input validation */
-	wrapInput?: InputWrapper<T, T>
+	afterInput?: (parent: any, value?: T, context?: any, info?: any) => Maybe<T>;
+	/**
+	 * Exec Operation before and after input validation
+	 */
+	wrapInput?: InputWrapper<T>
 	/** Exec Operation before and after output */
-	wrapOutput?: OutputWrapper<T, T>
+	wrapOutput?: OutputWrapper<any, T>
 	/** Exec operations before output */
-	beforeOutput?: ResolverOutputMethod<T, T>
+	beforeOutput?: (parent: any, args?: T, context?: any, info?: any) => Maybe<T>;
 	/** Exec operations after output */
-	afterOutput?: ResolverOutputMethod<T, T>
+	afterOutput?: (parent: any, args?: T, context?: any, info?: any) => Maybe<T>;
 }
 
 /** Input wrapper */
-export type InputWrapper<P, T> = (
-	parent: P,
-	value: T | any,
+export type InputWrapper<T> = (
+	parent: any,
+	value: T | undefined | null,
 	context: any,
 	info: any,
 	next: () => void
-) => T | Promise<T>;
+) => Maybe<T>;
 
 
 /** Output wrapper */
 export type OutputWrapper<P, T> = (
 	parent: P,
-	args: any,
+	args: T | undefined,
 	context: any,
 	info: any,
 	next: () => void
-) => T extends undefined ? T | void : T;
+) => Maybe<T>;
 
 /** Model output resolvers */
 export type ResolverOutputConfig<T> = {
