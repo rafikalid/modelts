@@ -46,7 +46,7 @@ export interface ResolverConfig<T> {
 	/** Exec operation before input validation */
 	beforeInput?: ResolverInputMethod<T, T>
 	/** Exec after input */
-	afterInput?: ResolverInputMethod<T, T>
+	afterInput?: (parent: any, value: T, context?: any, info?: any) => T | Promise<T>;
 	/** Exec Operation before and after input validation */
 	wrapInput?: InputWrapper<T, T>
 	/** Exec Operation before and after output */
