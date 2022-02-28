@@ -30,7 +30,6 @@ export interface ModelBasicScalar<T> extends Scalar<T> {
 /** Resolve union type */
 export type UnionResolver<T> = (value: T, context?: unknown, info?: unknown) => number;
 
-<<<<<<< HEAD
 /**
  * Exec action on entity before validation
  */
@@ -57,38 +56,6 @@ export type PostResolve<T> = PrePostResolver<T>;
  * Wrap resolver of an Entity
  */
 export type WrapResolver<T> = (value: T, args: unknown, context: unknown, info: unknown, next: WrapperCallBack) => T | undefined | Promise<T | undefined>;
-=======
-/** Model resolver config */
-export interface ResolverConfig<T> {
-	/** Output resolvers */
-	outputFields?: ResolverOutputConfig<T>,
-	/** Input resolvers */
-	inputFields?: ResolverInputConfig<T>
-	/** Exec operation before input validation */
-	beforeInput?: (parent: any, value?: T, context?: any, info?: any) => Maybe<T>;
-	/** Exec after input */
-	afterInput?: (parent: any, value?: T, context?: any, info?: any) => Maybe<T>;
-	/**
-	 * Exec Operation before and after input validation
-	 */
-	wrapInput?: InputWrapper<T>
-	/** Exec Operation before and after output */
-	wrapOutput?: OutputWrapper<any, T>
-	/** Exec operations before output */
-	beforeOutput?: (parent: any, args?: T, context?: any, info?: any) => Maybe<T>;
-	/** Exec operations after output */
-	afterOutput?: (parent: any, args?: T, context?: any, info?: any) => Maybe<T>;
-}
-
-/** Input wrapper */
-export type InputWrapper<T> = (
-	parent: any,
-	value: T | undefined | null,
-	context: any,
-	info: any,
-	next: () => void
-) => Maybe<T>;
->>>>>>> 1e1ca467d1b2006b9c70bc6d8906712f219c878c
 
 /** Wrappers callback */
 export type WrapperCallBack = () => void;
@@ -105,15 +72,9 @@ export type ConvertOutput<T> = Resolver<unknown, T | undefined, unknown>;
 /** Output wrapper @deprecated */
 export type OutputWrapper<P, T> = (
 	parent: P,
-<<<<<<< HEAD
 	args: unknown,
 	context: unknown,
 	info: unknown,
-=======
-	args: T | undefined,
-	context: any,
-	info: any,
->>>>>>> 1e1ca467d1b2006b9c70bc6d8906712f219c878c
 	next: () => void
 ) => Maybe<T>;
 
