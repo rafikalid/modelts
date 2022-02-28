@@ -1,4 +1,4 @@
-import { Int, JsonTypes, Model, ModelScalar, UNION, ResolversOf, assert, ignore } from "@src/index.js";
+import { Int, JsonTypes, Model, Scalar, UNION, ResolversOf, assert, ignore } from "@src/index.js";
 
 /**
  * @tsmodel
@@ -111,7 +111,7 @@ export const model = new Model();
 export type ObjectId = ``;
 
 /** Object id scalar */
-export const ObjectIdScalar: ModelScalar<ObjectId> = {
+export const ObjectIdScalar: Scalar<ObjectId> = {
 	parse(value: JsonTypes) {
 		return value as ObjectId;
 	},

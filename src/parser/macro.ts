@@ -112,7 +112,19 @@ export class MacroUtils {
 		const factory = this.factory;
 		var body: ts.Statement[] = [];
 		// Normalize args
-		let params = node.parameters;
+		let params: ts.ParameterDeclaration[] | ts.NodeArray<ts.ParameterDeclaration> = node.parameters;
+		if (params.length < 4) {
+			params = Array.from(params);
+			for (let i = params.length; i < 4; ++i) {
+				params.push(
+					factory.createParameterDeclaration(
+						undefined, undefined, undefined,
+						factory.createUniqueName('p'), undefined, undefined, undefined
+					)
+				);
+			}
+		}
+		// Convert to vars
 		let targetParams: ts.ParameterDeclaration[] = [];
 		let paramVars: ts.Identifier[] = [];
 		for (let i = 0, len = params.length; i < len; ++i) {

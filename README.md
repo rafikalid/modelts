@@ -52,7 +52,7 @@ Easy to use validations.
 
 
 # Define custom scalers
-Just export an object of type: `ModelScalar<yourType>`
+Just export an object of type: `Scalar<yourType>`
 ```typescript
 import type {ModelScaler} from 'tt-model';
 
@@ -61,7 +61,7 @@ import type {ModelScaler} from 'tt-model';
  * in development mode.
  * Nice, it's what your IDE and any body already understand ;)
  */
-export const myScaler: ModelScalar<myScalersType> = {
+export const myScaler: Scalar<myScalersType> = {
 	/** @optional parser from JSON */
 	parse?: (value: string | boolean | number) => myType;
 
@@ -84,7 +84,7 @@ import {ModelScaler} from 'tt-model';
 import {ObjectId} from 'mongodb';
 
 /** My Optional documentation */
-export const myScaler: ModelScalar<ObjectId> = {
+export const myScaler: Scalar<ObjectId> = {
 	parse(value: string){
 		if(typeof value!== 'string')
 			throw new Error(`Illegal id: ${value}`);
@@ -104,7 +104,7 @@ import {ModelScaler, Clone} from 'tt-model';
 export CellPhone= Clone<string>;
 
 /** Define my serializer / parser of Cellphone */
-export const myScaler: ModelScalar<CellPhone> = {
+export const myScaler: Scalar<CellPhone> = {
 	parse(value: string){
 		// TODO Add your validation logic
 		return value as CellPhone;
@@ -685,7 +685,7 @@ export interface MyEntity{
  * Define entity resolvers
  * use any name you wish as the class name
  */
-export class MyEntityResolvers implements ResolverOutputConfig<MyEntity>{
+export class MyEntityResolvers implements ResolversOf<MyEntity>{
 	/** Resolve role */
 	role(parent: MyEntity, args: any): Role{
 		return DB.resolveRoleById(parent.role);
@@ -829,7 +829,7 @@ regex: Apply regular expression
 ## Validation using custom functions
 
 ### Validate/Pipeline entity fields
-Just like resolvers, define a class that implement the entity using `ResolverInputConfig<YourEntity>`
+Just like resolvers, define a class that implement the entity using `ValidatorsOf<YourEntity>`
 
 > Received type as second argument will override field's INPUT type
 
@@ -841,7 +841,7 @@ export interface MyEntity {
 }
 
 /** Define validator for fields */
-export class anyClassName implements ResolverInputConfig<MyEntity> {
+export class anyClassName implements ValidatorsOf<MyEntity> {
 	/**
 	 * Define field validator just like resolvers
 	 */
