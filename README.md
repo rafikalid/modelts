@@ -1,4 +1,7 @@
 # tt-Model
+
+> DOCS NEEDS UPGRADE. BREAKING CHANGES ADDED.
+
 Make better model schemas for **GraphQL**, **REST** APIs or any other purpose using only your already well known typescript classes and interfaces.
 
 Extract models from your already created typescript interfaces and classes.
