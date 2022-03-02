@@ -11,11 +11,11 @@ export interface Scalar<T> {
 	/** Stringify value */
 	serialize?: (value: T) => JsonTypes | undefined | null;
 	/** Load from Database */
-	fromDB?: (value: unknown) => T;
+	fromDB?: (value: any) => T;
 	/** Save into database */
-	toDB?: (value: T) => unknown;
+	toDB?: (value: T) => any;
 	/** Mock */
-	mock?: (parent: unknown) => T | undefined;
+	mock?: (parent: any) => T | undefined;
 }
 
 /**
@@ -28,21 +28,21 @@ export interface ModelBasicScalar<T> extends Scalar<T> {
 }
 
 /** Resolve union type */
-export type UnionResolver<T> = (value: T, context?: unknown, info?: unknown) => number;
+export type UnionResolver<T> = (value: T, context?: any, info?: any) => number;
 
 /**
  * Exec action on entity before validation
  */
-export type PreValidate<T> = Validator<unknown, T>;
+export type PreValidate<T> = Validator<any, T>;
 /**
  * Exec action on entity after validation
  * Convert received data
  */
-export type PostValidate<T> = Validator<unknown, T>;
+export type PostValidate<T> = Validator<any, T>;
 /**
  * Wrap validation logic (before and after)
  */
-export type WrapValidation<T> = (parent: unknown, value: T, context: unknown, info: unknown, next: WrapperCallBack) => T | undefined | Promise<T | undefined>;
+export type WrapValidation<T> = (parent: any, value: T, context: any, info: any, next: WrapperCallBack) => T | undefined | Promise<T | undefined>;
 /**
  * Execute action before resolver
  */
@@ -55,7 +55,7 @@ export type PostResolve<T> = PrePostResolver<T>;
 /**
  * Wrap resolver of an Entity
  */
-export type WrapResolver<T> = (value: T, args: unknown, context: unknown, info: unknown, next: WrapperCallBack) => T | undefined | Promise<T | undefined>;
+export type WrapResolver<T> = (value: T, args: any, context: any, info: any, next: WrapperCallBack) => T | undefined | Promise<T | undefined>;
 
 /** Wrappers callback */
 export type WrapperCallBack = () => void;
@@ -63,24 +63,24 @@ export type WrapperCallBack = () => void;
 /**
  * Convert Input Entity
  */
-export type ConvertInput<T> = Resolver<unknown, unknown, T | undefined>;
+export type ConvertInput<T> = Resolver<any, any, T | undefined>;
 /**
  * Convert Output Entity
  */
-export type ConvertOutput<T> = Resolver<unknown, T | undefined, unknown>;
+export type ConvertOutput<T> = Resolver<any, T | undefined, any>;
 
 /** Output wrapper @deprecated */
 export type OutputWrapper<P, T> = (
 	parent: P,
-	args: unknown,
-	context: unknown,
-	info: unknown,
+	args: any,
+	context: any,
+	info: any,
 	next: () => void
 ) => Maybe<T>;
 
 /** Model output resolvers */
 export type ResolversOf<T> = {
-	[P in keyof T]?: Resolver<T, unknown, unknown>
+	[P in keyof T]?: Resolver<T, any, any>
 }
 
 /** Model input config */
@@ -92,24 +92,24 @@ export type ValidatorsOf<T> = {
 export type Validator<ParentType, T> = (
 	parent: ParentType,
 	value: T,
-	context?: unknown,
-	info?: unknown
+	context?: any,
+	info?: any
 ) => T | undefined | Promise<T | undefined>;
 
 /** Output resolver method signature */
 export type Resolver<ParentType, InputArg, OutputType> = (
 	parent: ParentType,
 	args: InputArg,
-	context?: unknown,
-	info?: unknown
+	context?: any,
+	info?: any
 ) => OutputType extends undefined | null ? OutputType | void : OutputType;
 
 /** Resolver Pre and Post */
 export type PrePostResolver<T> = (
 	value: T,
-	args?: unknown,
-	context?: unknown,
-	info?: unknown
+	args?: any,
+	context?: any,
+	info?: any
 ) => T | undefined | Promise<T | undefined>;
 
 /** Maybe return value or null or undefined */
@@ -121,7 +121,7 @@ export type MaybeAsync<T> = Promise<T | null | undefined>;
 
 /** Root config */
 export interface RootConfig {
-	before?: Resolver<unknown, unknown, unknown>
-	after?: Resolver<unknown, unknown, unknown>
-	wrap?: OutputWrapper<unknown, unknown>
+	before?: Resolver<any, any, any>
+	after?: Resolver<any, any, any>
+	wrap?: OutputWrapper<any, any>
 }
