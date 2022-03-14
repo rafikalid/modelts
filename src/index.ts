@@ -1,4 +1,5 @@
 export * from './model/index';
+export * from './model/utils';
 export * from './parser/interfaces';
 export * from './parser/macro';
 export * from './parser/types';

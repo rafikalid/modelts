@@ -102,7 +102,7 @@ export type Resolver<ParentType, InputArg, OutputType> = (
 	args: InputArg,
 	context?: any,
 	info?: any
-) => OutputType extends undefined | null ? OutputType | void : OutputType;
+) => OutputType extends undefined | null ? OutputType | Promise<OutputType> | void : OutputType | undefined | null | Promise<OutputType | undefined | null>;
 
 /** Resolver Pre and Post */
 export type PrePostResolver<T> = (
