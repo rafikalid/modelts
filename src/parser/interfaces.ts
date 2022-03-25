@@ -7,15 +7,15 @@ export type JsonTypes = string | number | boolean; // |null|undefined
 /** Create new Scalar */
 export interface Scalar<T> {
 	/** Parse value */
-	parse?: (value: JsonTypes) => T;
+	parse?: (value: JsonTypes) => T | null | undefined;
 	/** Stringify value */
 	serialize?: (value: T) => JsonTypes | undefined | null;
 	/** Load from Database */
-	fromDB?: (value: any) => T;
+	fromDB?: (value: any) => T | null | undefined;
 	/** Save into database */
 	toDB?: (value: T) => any;
 	/** Mock */
-	mock?: (parent: any) => T | undefined;
+	mock?: (parent: any) => T | null | undefined;
 }
 
 /**
