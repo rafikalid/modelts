@@ -44,7 +44,7 @@
 		"uglify-js": "^3.14.4"
 	},
 	"dependencies": {
-		"chalk": "^5.0.0",
+		"chalk": "^5.0.1",
 		"glob": "^7.2.0",
 		"graphql": "^16.0.1",
 		"json5": "^2.2.0",
