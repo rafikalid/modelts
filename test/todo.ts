@@ -57,6 +57,14 @@ export class UserValidators implements validatorsOf<User>{
 	name(p: unknown, args: unknown): string {
 		return 'cc';
 	}
+
+	/** Convert whole entity before validation */
+	[CONVERT](value) { return value; }
+	/** Exec before validation */
+	[BEFORE]() { }
+
+	/** Exec after validation */
+	[AFTER]() { }
 }
 
 
