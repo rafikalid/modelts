@@ -13,4 +13,6 @@ export enum ModelErrorCode {
 	NOT_COMPILED,
 	/** Parser error: Wrong value format */
 	WRONG_VALUE,
+	/** Wrong annotation arguments */
+	WRONG_ANNOTATION_VALUE,
 }
