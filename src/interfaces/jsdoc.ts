@@ -2,7 +2,15 @@ import type ts from "typescript";
 import { ModelErrorCode, ModelError } from "./error";
 
 /** Annotation method */
-export type JsDocAnnotationMethod = (arg: string, utils: JsDocUtils) => jsDocAnnotationResult;
+export type JsDocAnnotationMethod =
+	(utils: JsDocUtils) => JsDocAnnotationMethodResult
+
+export interface JsDocAnnotationMethodResult {
+	/** Init root statement, added only once */
+	root?: string | ts.Statement | ts.Statement[]
+	/** Specific statements for each argument */
+	exec: (arg: string, utils?: JsDocUtils) => jsDocAnnotationResult
+}
 
 /** Jsdoc format */
 export interface JsDocInterface {
@@ -11,12 +19,8 @@ export interface JsDocInterface {
 
 /** JsDoc annotation result */
 export interface jsDocAnnotationResult {
-	/** Additional imports */
-	imports?: {
-		name?: string | ts.Identifier
-		namedImports?: (string | ts.Identifier | ts.ImportSpecifier)[]
-		lib: string
-	}[],
+	/** Additional imports or any root statement */
+	root?: string | ts.Statement | ts.Statement[],
 	/** Insert code before execution */
 	before?: string | ts.Statement | ts.Statement[]
 	/** Insert code after execution */
@@ -25,16 +29,24 @@ export interface jsDocAnnotationResult {
 
 /** JsDoc annotations */
 export class JsDocAnnotations implements JsDocInterface {
-	[k: string]: JsDocAnnotationMethod;
+	[P: string]: JsDocAnnotationMethod;
 
 	/** Parse assertions */
-	assert(arg: string) {
-		return {};
+	assert(utils: JsDocUtils) {
+		return {
+			exec(arg: string) {
+				return {};
+			}
+		};
 	}
 
 	/** Pase default value */
-	default(arg: string) {
-		return {};
+	default(utils: JsDocUtils): JsDocAnnotationMethodResult {
+		return {
+			exec(arg: string) {
+				return {};
+			}
+		};
 	}
 }
 
@@ -42,10 +54,10 @@ export class JsDocAnnotations implements JsDocInterface {
 export interface JsDocUtils {
 	/** Create unique identifier */
 	uniqueName: (name: string) => ts.Identifier
-	/** Create named import */
-	namedImport: (propertyName: string | ts.Identifier, name: string | ts.Identifier) => ts.ImportSpecifier
 	/** Concat code with identifiers */
 	code: (str: TemplateStringsArray, ...args: any[]) => ts.Statement
+	/** Current class element type or method return type */
+	type: any
 }
 
 /** Create decorator */
