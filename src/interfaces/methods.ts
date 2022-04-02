@@ -11,3 +11,9 @@ export interface GqlSchema {
 	mutation: Record<string, any>
 	inscription: Record<string, any>
 }
+
+
+/** Info */
+export interface ModelInfo {
+
+}
