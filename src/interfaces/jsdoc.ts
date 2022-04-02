@@ -1,4 +1,5 @@
 import type ts from "typescript";
+import { Node } from "..";
 import { ModelErrorCode, ModelError } from "./error";
 
 /** Annotation method */
@@ -57,7 +58,13 @@ export interface JsDocUtils {
 	/** Concat code with identifiers */
 	code: (str: TemplateStringsArray, ...args: any[]) => ts.Statement
 	/** Current class element type or method return type */
-	type: any
+	type: Node
+	/** when method: Param type */
+	param: Node | undefined
+	/** Parent node type */
+	parent: Node | undefined
+	/** Check if a path exists inside types */
+	pathExists: (type: Node, path: string) => boolean
 }
 
 /** Create decorator */
