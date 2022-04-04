@@ -194,9 +194,6 @@ others(
 ) {
 	/** Implements other methods */
 }
-}
 
-//TODO resolver arg: if not null: create empty object for it and than check inside.
-//TODO for resolvers, check all arguments and set theme depending on type
-
-// TODO rename MaybeAsync to MaybePromise
+//TODO  @default annotation
+//TODO "Dual<T, T2>" entities to split fields into two objects
