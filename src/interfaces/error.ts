@@ -15,4 +15,6 @@ export enum ModelErrorCode {
 	WRONG_VALUE,
 	/** Wrong annotation arguments */
 	WRONG_ANNOTATION_VALUE,
+	/** Wrong annotation use */
+	WRONG_ANNOTATION_USE
 }

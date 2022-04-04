@@ -10,7 +10,7 @@ export interface JsDocAnnotationMethodResult {
 	/** Init root statement, added only once */
 	root?: string | ts.Statement | ts.Statement[]
 	/** Specific statements for each argument */
-	exec: (arg: string, utils?: JsDocUtils) => jsDocAnnotationResult
+	exec: (arg: string, utils: JsDocUtilsMethod) => jsDocAnnotationResult
 }
 
 /** Jsdoc format */
@@ -57,22 +57,43 @@ export interface JsDocUtils {
 	uniqueName: (name: string) => ts.Identifier
 	/** Concat code with identifiers */
 	code: (str: TemplateStringsArray, ...args: any[]) => ts.Statement
-	/** Current class element type or method return type */
-	type: Node
-	/** when method: Param type */
-	param: Node | undefined
-	/** Parent node type */
-	parent: Node | undefined
-	/** Check if a path exists inside types */
-	pathExists: (type: Node, path: string) => boolean
 }
 
+export interface JsDocUtilsMethod extends JsDocUtils {
+	/** Current class element type or method return type */
+	getType: (path?: string) => Node | undefined
+	/** when method: Param type */
+	getInput: (path?: string) => Node | undefined
+	/** Parent node type */
+	getParent: (path?: string) => Node | undefined
+}
+
+/** Annotation signature */
+export type DecoratorSignature = (
+	target: any,
+	propertyKey?: string,
+	descriptor?: PropertyDescriptor
+) => any;
+
 /** Create decorator */
-export function createDecorator<T extends (...args: any[]) => any>(cb: JsDocAnnotationMethod):
-	(...args: Parameters<T>) => (
-		target: any,
-		propertyKey?: string,
-		descriptor?: PropertyDescriptor
-	) => any {
+export function createDecorator<T extends ((...args: any[]) => any) | void = void>(cb: JsDocAnnotationMethod):
+	T extends ((...args: any[]) => any) ? ((...args: Parameters<T>) => DecoratorSignature) : DecoratorSignature {
 	throw new ModelError(ModelErrorCode.NOT_COMPILED, 'Please compile code');
 }
+
+/**
+ * pre-validate entity annotation
+ */
+export function beforeValidate(target: any, propertyKey?: string, descriptor?: PropertyDescriptor) { throw new ModelError(ModelErrorCode.NOT_COMPILED, 'Please compile code'); }
+/**
+ * Post-validate entity annotation
+ */
+export function afterValidate(target: any, propertyKey?: string, descriptor?: PropertyDescriptor) { throw new ModelError(ModelErrorCode.NOT_COMPILED, 'Please compile code'); }
+/**
+ * pre-resolve entity annotation
+ */
+export function beforeResolve(target: any, propertyKey?: string, descriptor?: PropertyDescriptor) { throw new ModelError(ModelErrorCode.NOT_COMPILED, 'Please compile code'); }
+/**
+ * pre-resolve entity annotation
+ */
+export function afterResolve(target: any, propertyKey?: string, descriptor?: PropertyDescriptor) { throw new ModelError(ModelErrorCode.NOT_COMPILED, 'Please compile code'); }
