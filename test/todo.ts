@@ -197,3 +197,14 @@ others(
 
 //TODO  @default annotation
 //TODO "Dual<T, T2>" entities to split fields into two objects
+
+// TODO create object with default data
+
+// TODO Duplex<T, T2> extract two entities from same input object
+
+//TODO Multiplex
+interface M1 extends Multiplex {
+	obj1: CL1
+	obj2: CL2
+	obj3: CL3
+}

@@ -1,5 +1,5 @@
 import type ts from "typescript";
-import { Node } from "..";
+import { Node } from "../compiler";
 import { ModelErrorCode, ModelError } from "./error";
 
 /** Annotation method */
@@ -41,8 +41,42 @@ export class JsDocAnnotations implements JsDocInterface {
 		};
 	}
 
-	/** Pase default value */
+	/** Parse default input value */
 	default(utils: JsDocUtils): JsDocAnnotationMethodResult {
+		return {
+			exec(arg: string) {
+				return {};
+			}
+		};
+	}
+	/** Parse default output value */
+	defaultOutput(utils: JsDocUtils): JsDocAnnotationMethodResult {
+		return {
+			exec(arg: string) {
+				return {};
+			}
+		};
+	}
+	/** Clear all fields default value */
+	clearDefault(utils: JsDocUtils): JsDocAnnotationMethodResult {
+		return {
+			exec(arg: string) {
+				return {};
+			}
+		};
+	}
+
+	/** Mark an attribute as optional when input */
+	optionalInput(utils: JsDocUtils): JsDocAnnotationMethodResult {
+		return {
+			exec(arg: string) {
+				return {};
+			}
+		};
+	}
+
+	/** Mark an attribute as optional when output */
+	optionalOutput(utils: JsDocUtils): JsDocAnnotationMethodResult {
 		return {
 			exec(arg: string) {
 				return {};
@@ -78,22 +112,43 @@ export type DecoratorSignature = (
 /** Create decorator */
 export function createDecorator<T extends ((...args: any[]) => any) | void = void>(cb: JsDocAnnotationMethod):
 	T extends ((...args: any[]) => any) ? ((...args: Parameters<T>) => DecoratorSignature) : DecoratorSignature {
-	throw new ModelError(ModelErrorCode.NOT_COMPILED, 'Please compile code');
+	throw new ModelError(ModelErrorCode.NOT_COMPILED);
 }
+
+/** Assert */
+export const assert = createDecorator<any>(JsDocAnnotations.prototype.assert);
+/** Default input value */
+export const defaultValue = createDecorator<any>(JsDocAnnotations.prototype.default);
+/** Clear all default values */
+export const clearDefault = createDecorator<any>(JsDocAnnotations.prototype.clearDefault);
+/** Default output value */
+export const defaultOutput = createDecorator<any>(JsDocAnnotations.prototype.defaultOutput);
+/** Mark as optional when input */
+export const optionalInput = createDecorator<any>(JsDocAnnotations.prototype.optionalInput);
+/** Mark as optional when input */
+export const optionalOutput = createDecorator<any>(JsDocAnnotations.prototype.optionalOutput);
 
 /**
  * pre-validate entity annotation
  */
-export function beforeValidate(target: any, propertyKey?: string, descriptor?: PropertyDescriptor) { throw new ModelError(ModelErrorCode.NOT_COMPILED, 'Please compile code'); }
+export function beforeValidate(target: any, propertyKey?: string, descriptor?: PropertyDescriptor) { throw new ModelError(ModelErrorCode.NOT_COMPILED); }
 /**
  * Post-validate entity annotation
  */
-export function afterValidate(target: any, propertyKey?: string, descriptor?: PropertyDescriptor) { throw new ModelError(ModelErrorCode.NOT_COMPILED, 'Please compile code'); }
+export function afterValidate(target: any, propertyKey?: string, descriptor?: PropertyDescriptor) { throw new ModelError(ModelErrorCode.NOT_COMPILED); }
 /**
  * pre-resolve entity annotation
  */
-export function beforeResolve(target: any, propertyKey?: string, descriptor?: PropertyDescriptor) { throw new ModelError(ModelErrorCode.NOT_COMPILED, 'Please compile code'); }
+export function beforeResolve(target: any, propertyKey?: string, descriptor?: PropertyDescriptor) { throw new ModelError(ModelErrorCode.NOT_COMPILED); }
 /**
  * pre-resolve entity annotation
  */
-export function afterResolve(target: any, propertyKey?: string, descriptor?: PropertyDescriptor) { throw new ModelError(ModelErrorCode.NOT_COMPILED, 'Please compile code'); }
+export function afterResolve(target: any, propertyKey?: string, descriptor?: PropertyDescriptor) { throw new ModelError(ModelErrorCode.NOT_COMPILED); }
+
+// /** Generate default value for a field */
+// export function defaultValue(target: any, propertyKey?: string, descriptor?: PropertyDescriptor) { throw new ModelError(ModelErrorCode.NOT_COMPILED); }
+
+/** Generate  */
+
+/** Convert input/output data */
+export function convert(target: any, propertyKey?: string, descriptor?: PropertyDescriptor) { throw new ModelError(ModelErrorCode.NOT_COMPILED); }

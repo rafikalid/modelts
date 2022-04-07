@@ -1,8 +1,8 @@
 /** Errors */
 export class ModelError extends Error {
 	code: ModelErrorCode;
-	constructor(code: ModelErrorCode, message: string) {
-		super(message);
+	constructor(code: ModelErrorCode, message?: string) {
+		super(message ?? _errMessages[code]);
 		this.code = code;
 	}
 }
@@ -18,3 +18,11 @@ export enum ModelErrorCode {
 	/** Wrong annotation use */
 	WRONG_ANNOTATION_USE
 }
+
+/** Predefined Error Messages */
+const _errMessages = [
+	/* NOT_COMPILED */			'Please compile your code using "tt-model-compiler" or similar',
+	/* WRONG_VALUE */			'Wrong value',
+	/* WRONG_ANNOTATION_VALUE */'Wrong annotation value',
+	/* WRONG_ANNOTATION_USE */	'Wrong annotation use'
+]

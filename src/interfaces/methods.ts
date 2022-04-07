@@ -2,7 +2,7 @@ import { ModelError, ModelErrorCode, JsDocAnnotations } from '@src';
 
 /** Create graphql schema */
 export function scanForGraphQL<S extends GqlSchema, A extends JsDocAnnotations = JsDocAnnotations, Context = any>(glob: string) {
-	throw new ModelError(ModelErrorCode.NOT_COMPILED, 'Please compile your code');
+	throw new ModelError(ModelErrorCode.NOT_COMPILED);
 }
 
 /** Basic schema */
@@ -15,7 +15,12 @@ export interface GqlSchema {
 
 /** Info */
 export interface ModelInfo {
-
+	/** Type name */
+	parentTypeName: string
+	/** Real type name (where this field is inherited) */
+	parentRootTypeName: string
+	/** Parent document */
+	parent: any
 }
 
 /** Return value as promise or undefined */
@@ -36,8 +41,8 @@ export type ValidatorsOf<T> = {
 	[P in keyof T]?: (...args: any[]) => Maybe<T[P]>
 } & { [s: string]: resolverMethod }
 
-/** Resolve union type */
-export type UnionResolver<T> = (value: T, context?: any, info?: any) => number;
+/** Resolve union type name */
+export type UnionResolver<T> = (value: T, context?: any, info?: any) => string;
 
 
 /** Extract partial fields that are not null */
