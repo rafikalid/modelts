@@ -1,9 +1,3 @@
-import { ModelError, ModelErrorCode, JsDocAnnotations } from '@src';
-
-/** Create graphql schema */
-export function scanForGraphQL<S extends GqlSchema, A extends JsDocAnnotations = JsDocAnnotations, Context = any>(glob: string) {
-	throw new ModelError(ModelErrorCode.NOT_COMPILED);
-}
 
 /** Basic schema */
 export interface GqlSchema {

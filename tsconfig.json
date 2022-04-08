@@ -42,14 +42,14 @@
 		"resolveJsonModule": true,
 		"baseUrl": "./" /* Base directory to resolve non-absolute module names. */,
 		"paths": {
+			"@interfaces/*": [
+				"src/interfaces/*"
+			],
 			"@src/*": [
 				"src/*"
 			],
 			"@src": [
 				"src"
-			],
-			"@interfaces/*": [
-				"src/interfaces/*"
 			]
 			// "@components": ["src/components/*"],
 			// "@atoms": ["src/components/atoms/*"],
