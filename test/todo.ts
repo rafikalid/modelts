@@ -208,3 +208,19 @@ interface M1 extends Multiplex {
 	obj2: CL2
 	obj3: CL3
 }
+
+
+//--------------
+interface User {
+	_id: ID
+	firstName: string
+}
+
+/**
+ * @resolvers
+ */
+class Mutation {
+	createUser(user: New<User>) { }
+
+	editUser(user: Edit<User>) { }
+}

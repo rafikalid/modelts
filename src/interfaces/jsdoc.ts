@@ -1,5 +1,4 @@
 import type ts from "typescript";
-import { Node } from "../compiler";
 import { ModelErrorCode, ModelError } from "./error";
 
 /** Annotation method */
@@ -95,11 +94,11 @@ export interface JsDocUtils {
 
 export interface JsDocUtilsMethod extends JsDocUtils {
 	/** Current class element type or method return type */
-	getType: (path?: string) => Node | undefined
+	getType: (path?: string) => NodeInfo | undefined
 	/** when method: Param type */
-	getInput: (path?: string) => Node | undefined
+	getInput: (path?: string) => NodeInfo | undefined
 	/** Parent node type */
-	getParent: (path?: string) => Node | undefined
+	getParent: (path?: string) => NodeInfo | undefined
 }
 
 /** Annotation signature */
@@ -152,3 +151,16 @@ export function afterResolve(target: any, propertyKey?: string, descriptor?: Pro
 
 /** Convert input/output data */
 export function convert(target: any, propertyKey?: string, descriptor?: PropertyDescriptor) { throw new ModelError(ModelErrorCode.NOT_COMPILED); }
+
+
+/** 
+ * Node info
+ */
+export interface NodeInfo {
+	/** Used selector */
+	selector: string,
+	/** Node name */
+	name: string,
+	/** Node type name */
+	type: string
+}
