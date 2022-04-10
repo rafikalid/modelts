@@ -109,23 +109,21 @@ export type DecoratorSignature = (
 ) => any;
 
 /** Create decorator */
-export function createDecorator<T extends ((...args: any[]) => any) | void = void>(cb: JsDocAnnotationMethod):
-	T extends ((...args: any[]) => any) ? ((...args: Parameters<T>) => DecoratorSignature) : DecoratorSignature {
+export function createDecorator<T extends ((...args: any[]) => any) | void = void>(cb: JsDocAnnotationMethod): DecoratorType<T> {
 	throw new ModelError(ModelErrorCode.NOT_COMPILED);
 }
 
-/** Assert */
-export const assert = createDecorator<any>(JsDocAnnotations.prototype.assert);
-/** Default input value */
-export const defaultValue = createDecorator<any>(JsDocAnnotations.prototype.default);
-/** Clear all default values */
-export const clearDefault = createDecorator<any>(JsDocAnnotations.prototype.clearDefault);
-/** Default output value */
-export const defaultOutput = createDecorator<any>(JsDocAnnotations.prototype.defaultOutput);
-/** Mark as optional when input */
-export const optionalInput = createDecorator<any>(JsDocAnnotations.prototype.optionalInput);
-/** Mark as optional when input */
-export const optionalOutput = createDecorator<any>(JsDocAnnotations.prototype.optionalOutput);
+/** Decorator type */
+export type DecoratorType<T> = T extends ((...args: any[]) => any) ? ((...args: Parameters<T>) => DecoratorSignature) : DecoratorSignature
+
+/** @internal Decorator creator */
+function _decoSignature(
+	target: any,
+	propertyKey?: string,
+	descriptor?: PropertyDescriptor
+) {
+	throw new ModelError(ModelErrorCode.NOT_COMPILED);
+}
 
 /**
  * pre-validate entity annotation
@@ -152,6 +150,8 @@ export function afterResolve(target: any, propertyKey?: string, descriptor?: Pro
 /** Convert input/output data */
 export function convert(target: any, propertyKey?: string, descriptor?: PropertyDescriptor) { throw new ModelError(ModelErrorCode.NOT_COMPILED); }
 
+/** Ignore this element */
+export function ignore(target: any, propertyKey?: string, descriptor?: PropertyDescriptor) { throw new ModelError(ModelErrorCode.NOT_COMPILED); }
 
 /** 
  * Node info
