@@ -1,5 +1,5 @@
 import { ModelError, ModelErrorCode } from "./error";
-import { ExtendsType, ScalarOptions } from "./scalars";
+import { ExtendsType, JSONType, Scalar } from "./scalars";
 
 //* Scalars
 /** Integer */
@@ -13,37 +13,37 @@ export type uFloat = ExtendsType<number>;
 
 
 /** Number */
-export const numberScalar: ScalarOptions<number> = {
-	parse(value) {
+export class numberScalar implements Scalar<number>{
+	parse(value: JSONType) {
 		if (typeof value === 'number') return value;
 		throw new ModelError(ModelErrorCode.WRONG_VALUE, `Expected number. Got ${typeof value}: ${value}`);
 	}
-};
+}
 /** Float */
-export const floatScalar: ScalarOptions<Float> = {
-	parse(value) {
+export class floatScalar implements Scalar<Float>{
+	parse(value: JSONType) {
 		if (typeof value === 'number') return value;
 		throw new ModelError(ModelErrorCode.WRONG_VALUE, `Expected Float. Got ${typeof value}: ${value}`);
 	}
-};
+}
 /** Unsigned Float */
-export const uFloatScalar: ScalarOptions<uFloat> = {
-	parse(value) {
+export class uFloatScalar implements Scalar<uFloat>{
+	parse(value: JSONType) {
 		if (typeof value === 'number' && value >= 0) return value;
 		throw new ModelError(ModelErrorCode.WRONG_VALUE, `Expected unsigned Float. Got ${typeof value}: ${value}`);
 	}
-};
+}
 /** Integer */
-export const intScalar: ScalarOptions<Int> = {
-	parse(value) {
+export class intScalar implements Scalar<Int>{
+	parse(value: JSONType) {
 		if (typeof value === 'number' && Number.isSafeInteger(value))
 			return value;
 		throw new ModelError(ModelErrorCode.WRONG_VALUE, `Expected integer. Got ${typeof value}: ${value}`);
-	},
-};
+	}
+}
 /** Unsigned integer */
-export const uIntScalar: ScalarOptions<uInt> = {
-	parse(value) {
+export class uIntScalar implements Scalar<uInt>{
+	parse(value: JSONType) {
 		if (
 			typeof value === 'number' &&
 			Number.isSafeInteger(value) &&
@@ -51,37 +51,38 @@ export const uIntScalar: ScalarOptions<uInt> = {
 		)
 			return value;
 		throw new ModelError(ModelErrorCode.WRONG_VALUE, `Expected unsigned integer. Got ${typeof value}: ${value}`);
-	},
-};
+	}
+}
 /** String */
-export const stringScalar: ScalarOptions<string> = {
-	parse(value) {
+export class stringScalar implements Scalar<string>{
+	parse(value: JSONType) {
 		if (typeof value === 'string') return value;
 		else return String(value);
-	},
-};
+	}
+}
+
 
 /** Boolean */
-export const booleanScalar: ScalarOptions<boolean> = {
-	parse(value) {
+export class booleanScalar implements Scalar<boolean>{
+	parse(value: JSONType) {
 		if (typeof value === 'boolean') return value;
 		else return !!value;
-	},
-};
+	}
+}
 /** Buffer */
-export const bufferScalar: ScalarOptions<Buffer> = {
-	serialize(value: Buffer) { return value.toString('base64url'); },
-	parse(value) {
+export class bufferScalar implements Scalar<Buffer>{
+	serialize(value: Buffer) { return value.toString('base64url'); }
+	parse(value: JSONType) {
 		if (typeof value === 'string')
 			return Buffer.from(value, 'base64url');
 		throw new ModelError(ModelErrorCode.WRONG_VALUE, `Expected Buffer as string. Got ${typeof value}: ${value}`);
-	},
+	}
 };
 
 /** BigInt */
-export const bingIntScalar: ScalarOptions<bigint> = {
-	serialize(value) { return value.toString(); },
-	parse(value) {
+export class bingIntScalar implements Scalar<bigint> {
+	serialize(value: bigint) { return value.toString(); }
+	parse(value: JSONType) {
 		if (typeof value === 'string' || typeof value === 'number')
 			return BigInt(value);
 		throw new ModelError(ModelErrorCode.WRONG_VALUE, `Expected date string or timestamp. Got ${typeof value}: ${value}`);
@@ -89,9 +90,9 @@ export const bingIntScalar: ScalarOptions<bigint> = {
 }
 
 /** Date */
-export const dateScalar: ScalarOptions<Date> = {
-	serialize(value) { return value.toISOString(); },
-	parse(value) {
+export class dateScalar implements Scalar<Date> {
+	serialize(value: Date) { return value.toISOString(); }
+	parse(value: JSONType) {
 		if (typeof value === 'string' || typeof value === 'number') {
 			let d = new Date(value);
 			if (typeof d.getTime() === 'number') return d;
