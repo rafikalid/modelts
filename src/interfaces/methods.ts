@@ -36,7 +36,9 @@ export type ValidatorsOf<T> = {
 } & { [s: string]: resolverMethod }
 
 /** Resolve union type name */
-export type UnionResolver<T> = (value: T, context?: any, info?: any) => string;
+export interface Union<T> {
+	resolve: (value: T, context?: any, info?: any) => string
+}
 
 
 /** Extract partial fields that are not null */
