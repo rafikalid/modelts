@@ -1,6 +1,8 @@
 import { ModelError, ModelErrorCode } from "./error";
 import { ExtendsType, JSONType, Scalar } from "./scalars";
 
+
+
 //* Scalars
 /** Integer */
 export type Int = ExtendsType<number>;
@@ -100,3 +102,17 @@ export class dateScalar implements Scalar<Date> {
 		throw new ModelError(ModelErrorCode.WRONG_VALUE, `Expected date string or timestamp. Got ${typeof value}: ${value}`);
 	}
 }
+
+/** Default scalars */
+export const defaultScalars = {
+	number: numberScalar,
+	Float: floatScalar,
+	uFloat: uFloatScalar,
+	Int: intScalar,
+	uInt: uIntScalar,
+	string: stringScalar,
+	boolean: booleanScalar,
+	Buffer: bufferScalar,
+	bigint: bingIntScalar,
+	Date: dateScalar
+};
