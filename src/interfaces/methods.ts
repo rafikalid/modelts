@@ -21,19 +21,21 @@ export interface ModelInfo {
 export type Maybe<T> = T | null | undefined | Promise<T | null | undefined>;
 export type MaybePromise<T> = Promise<T | null | undefined>;
 
-
 /** Resolvers */
-export type ResolversOf<T> = {
-	[P in keyof T]?: resolverMethod
-} & { [s: string]: resolverMethod }
-
-/** Resolver method */
-export type resolverMethod = (...args: any[]) => any
+export type ResolversOf<T> = TupleForEachType<T>;
 
 /** Validators */
-export type ValidatorsOf<T> = {
-	[P in keyof T]?: (...args: any[]) => Maybe<T[P]>
-} & { [s: string]: resolverMethod }
+export type ValidatorsOf<T> = TupleForEachType<T>;
+
+/**
+ * Split tuple and create validators or resolvers
+ */
+type TupleForEachType<T> = T extends [] ? {} :
+	T extends [infer F, ...infer R] ? {
+		[P in keyof F]?: (...args: any[]) => Maybe<F[P]> | any
+	} & TupleForEachType<R> : {
+		[P in keyof T]?: (...args: any[]) => Maybe<T[P]> | any
+	}
 
 /** Resolve union type name */
 export interface Union<T> {
@@ -51,4 +53,11 @@ export function partial<T extends object>(data: object): Partial<T> {
 		}
 	}
 	return result;
+}
+
+//**************** */
+let c: [string, number, boolean];
+
+function arg(...t: typeof c) {
+
 }

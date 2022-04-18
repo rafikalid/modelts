@@ -13,8 +13,8 @@ export interface JsDocAnnotationMethodResult {
 }
 
 /** Jsdoc format */
-export interface JsDocInterface {
-	[k: string]: JsDocAnnotationMethod
+export type JsDocInterface<T> = {
+	[k in keyof T]: JsDocAnnotationMethod
 }
 
 /** JsDoc annotation result */
@@ -28,9 +28,7 @@ export interface jsDocAnnotationResult {
 }
 
 /** JsDoc annotations */
-export class JsDocAnnotations implements JsDocInterface {
-	[P: string]: JsDocAnnotationMethod;
-
+export class JsDocAnnotations implements JsDocInterface<JsDocAnnotations> {
 	/** Parse assertions */
 	assert(utils: JsDocUtils) {
 		return {
@@ -109,21 +107,12 @@ export type DecoratorSignature = (
 ) => any;
 
 /** Create decorator */
-export function createDecorator<T extends ((...args: any[]) => any) | void = void>(cb: JsDocAnnotationMethod): DecoratorType<T> {
+export function createDecorator<T extends [...args: any] | void = void>(cb: JsDocAnnotationMethod): DecoratorType<T> {
 	throw new ModelError(ModelErrorCode.NOT_COMPILED);
 }
 
 /** Decorator type */
-export type DecoratorType<T> = T extends ((...args: any[]) => any) ? ((...args: Parameters<T>) => DecoratorSignature) : DecoratorSignature
-
-/** @internal Decorator creator */
-function _decoSignature(
-	target: any,
-	propertyKey?: string,
-	descriptor?: PropertyDescriptor
-) {
-	throw new ModelError(ModelErrorCode.NOT_COMPILED);
-}
+export type DecoratorType<T> = T extends [...args: any] ? ((...args: T) => DecoratorSignature) : DecoratorSignature
 
 /**
  * pre-validate entity annotation
