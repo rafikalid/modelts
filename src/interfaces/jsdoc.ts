@@ -3,7 +3,7 @@ import { ModelErrorCode, ModelError } from "./error";
 
 /** Annotation method */
 export type JsDocAnnotationMethod =
-	(utils: JsDocUtils) => JsDocAnnotationMethodResult
+	(utils: JsDocUtils, AnnotationName: string) => JsDocAnnotationMethodResult
 
 export interface JsDocAnnotationMethodResult {
 	/** Init root statement, added only once */
@@ -29,57 +29,57 @@ export interface jsDocAnnotationResult {
 
 /** JsDoc annotations */
 export class JsDocAnnotations implements JsDocInterface<JsDocAnnotations> {
-	/** Parse assertions */
-	assert(utils: JsDocUtils) {
-		return {
-			exec(arg: string) {
-				return {};
-			}
-		};
-	}
+	// /** Parse assertions */
+	// assert(utils: JsDocUtils) {
+	// 	return {
+	// 		exec(arg: string) {
+	// 			return {};
+	// 		}
+	// 	};
+	// }
 
-	/** Parse default input value */
-	default(utils: JsDocUtils): JsDocAnnotationMethodResult {
-		return {
-			exec(arg: string) {
-				return {};
-			}
-		};
-	}
-	/** Parse default output value */
-	defaultOutput(utils: JsDocUtils): JsDocAnnotationMethodResult {
-		return {
-			exec(arg: string) {
-				return {};
-			}
-		};
-	}
-	/** Clear all fields default value */
-	clearDefault(utils: JsDocUtils): JsDocAnnotationMethodResult {
-		return {
-			exec(arg: string) {
-				return {};
-			}
-		};
-	}
+	// /** Parse default input value */
+	// default(utils: JsDocUtils): JsDocAnnotationMethodResult {
+	// 	return {
+	// 		exec(arg: string) {
+	// 			return {};
+	// 		}
+	// 	};
+	// }
+	// /** Parse default output value */
+	// defaultOutput(utils: JsDocUtils): JsDocAnnotationMethodResult {
+	// 	return {
+	// 		exec(arg: string) {
+	// 			return {};
+	// 		}
+	// 	};
+	// }
+	// /** Clear all fields default value */
+	// clearDefault(utils: JsDocUtils): JsDocAnnotationMethodResult {
+	// 	return {
+	// 		exec(arg: string) {
+	// 			return {};
+	// 		}
+	// 	};
+	// }
 
-	/** Mark an attribute as optional when input */
-	optionalInput(utils: JsDocUtils): JsDocAnnotationMethodResult {
-		return {
-			exec(arg: string) {
-				return {};
-			}
-		};
-	}
+	// /** Mark an attribute as optional when input */
+	// optionalInput(utils: JsDocUtils): JsDocAnnotationMethodResult {
+	// 	return {
+	// 		exec(arg: string) {
+	// 			return {};
+	// 		}
+	// 	};
+	// }
 
-	/** Mark an attribute as optional when output */
-	optionalOutput(utils: JsDocUtils): JsDocAnnotationMethodResult {
-		return {
-			exec(arg: string) {
-				return {};
-			}
-		};
-	}
+	// /** Mark an attribute as optional when output */
+	// optionalOutput(utils: JsDocUtils): JsDocAnnotationMethodResult {
+	// 	return {
+	// 		exec(arg: string) {
+	// 			return {};
+	// 		}
+	// 	};
+	// }
 }
 
 /** utils */

@@ -26,18 +26,19 @@ export interface Scalar<T> {
 	mock?: (parent: any, context: any, info: ModelInfo) => T | undefined
 	/**
 	 * Parse "@assert" jsDoc annotation arguments into executable JS
+	 * argument varname: "arg"
 	 */
-	assertJsDocParser?: (value: string) => string | undefined // TODO add documentation
+	assertJsDocParser?: (values: string[], utils: JsDocUtils) => ParserResponse | ts.Statement | string // TODO add documentation
 	/**
 	 * Parse "@default" jsDoc annotation ito value
 	 */
-	defaultJsDocParser?: (value: string, utils: JsDocUtils) => DefaultParserResponse<T> | ts.Statement
+	defaultJsDocParser?: (value: string, utils: JsDocUtils) => ParserResponse | ts.Statement | string
 }
 
 /** Default parser */
-export interface DefaultParserResponse<T> {
+export interface ParserResponse {
 	/** Additional imports or any root statement */
 	root?: string | ts.Statement | ts.Statement[],
 	/** Default value generator */
-	value: T | ts.Statement | undefined
+	value: string | ts.Statement | undefined
 }
