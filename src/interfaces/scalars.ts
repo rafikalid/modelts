@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { Annotation, ParserResponse } from "./annotation";
 import { JsDocUtils } from "./jsdoc";
 import { ModelInfo } from "./methods";
 
@@ -28,17 +29,9 @@ export interface Scalar<T> {
 	 * Parse "@assert" jsDoc annotation arguments into executable JS
 	 * argument varname: "arg"
 	 */
-	assertJsDocParser?: (values: string[], utils: JsDocUtils) => ParserResponse | ts.Statement | string // TODO add documentation
+	assertJsDocParser?: (value: Annotation, utils: JsDocUtils) => ParserResponse | ts.Statement | string // TODO add documentation
 	/**
 	 * Parse "@default" jsDoc annotation ito value
 	 */
-	defaultJsDocParser?: (value: string, utils: JsDocUtils) => ParserResponse | ts.Statement | string
-}
-
-/** Default parser */
-export interface ParserResponse {
-	/** Additional imports or any root statement */
-	root?: string | ts.Statement | ts.Statement[],
-	/** Default value generator */
-	value: string | ts.Statement | undefined
+	defaultJsDocParser?: (value: Annotation, utils: JsDocUtils) => ParserResponse | ts.Statement | string
 }

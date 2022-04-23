@@ -7,5 +7,6 @@ export * from './interfaces/types';
 export * from './interfaces/type-describe';
 export * from './interfaces/multiplex';
 export * from './interfaces/object';
+export * from './interfaces/annotation';
 
 export * from './model/model';
