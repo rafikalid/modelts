@@ -1,6 +1,5 @@
 import type ts from "typescript";
 import { Annotation, AnnotationArgs } from "./annotation";
-import { ModelErrorCode, ModelError } from "./error";
 
 
 /** Jsdoc format */
@@ -31,5 +30,5 @@ export interface JsDocUtils {
 	/** Create unique identifier */
 	uniqueName: (name: string) => ts.Identifier
 	/** Concat code with identifiers */
-	code: (str: TemplateStringsArray, ...args: any[]) => ts.Statement
+	code: (str: TemplateStringsArray, ...args: any[]) => ts.Node[]
 }
