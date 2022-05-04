@@ -15,7 +15,7 @@ export interface Annotation {
 	/** Annotation name */
 	name: string
 	/** Annotation args */
-	args: AnnotationArgs[]
+	args: AnnotationArg[]
 	/** Element information */
 	element: ObjectElement | PropertyElement
 }
@@ -80,7 +80,7 @@ export interface PropertyElement extends Element {
 }
 
 /** Annotation arguments */
-export interface AnnotationArgs {
+export interface AnnotationArg {
 	/** Name found at annotation level */
 	name: string
 	/** Original arg name */
@@ -90,4 +90,4 @@ export interface AnnotationArgs {
 }
 
 /** Static values */
-export type StaticValue = string | number | boolean | undefined | StaticValue[];
+export type StaticValue = string | number | boolean | undefined | object | StaticValue[];
